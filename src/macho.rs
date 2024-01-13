@@ -1,4 +1,4 @@
-use std::mem::transmute;
+use std::mem;
 
 #[derive(Debug)]
 pub struct Header {
@@ -13,9 +13,10 @@ pub struct Header {
 }
 
 impl Header {
-    pub fn from(bytes: [u8; 32]) -> Header {
+    pub fn from(bytes: &[u8]) -> Header {
         unsafe {
-            transmute::<[u8; 32], Header>(bytes)
+            mem::transmute_copy::<[u8; 32], Header>(
+                bytes[0..32].try_into().unwrap())
         }
     }
 

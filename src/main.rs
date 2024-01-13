@@ -1,3 +1,7 @@
+use std::fs::File;
+
+use memmap::{ Mmap, MmapOptions };
+
 mod macho;
 
 fn main() {
@@ -10,16 +14,25 @@ fn main() {
         args.swap_remove(1)
     };
 
-    println!("loading from file: {}", path);
-    let mut bytes: [u8; 32] = [0; 32];
-    bytes[0] = 0xcf;
-    bytes[1] = 0xfa;
-    bytes[2] = 0xed;
-    bytes[3] = 0xfe;
+    let mmap: Mmap = mmap_file(path)
+        .unwrap_or_else(|e| {
+            println!("{}", e);
+            std::process::exit(1);
+        });
+    let bytes: &[u8] = &mmap[0..32];
     let header = macho::Header::from(bytes);
     header.show()
 }
 
 fn usage(args: Vec<String>) {
     println!("usage: {} FILENAME", args[0]);
+}
+
+fn mmap_file(path: String) -> Result<Mmap, String> {
+    let file = File::open(path)
+        .map_err(|e| format!("error opening file: {}", e))?;
+    unsafe {
+        MmapOptions::new().map(&file)
+            .map_err(|e| format!("error mmaping file: {}", e))
+    }
 }
