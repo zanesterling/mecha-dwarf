@@ -1,6 +1,11 @@
 use std::mem;
 
 #[derive(Debug)]
+pub struct File {
+    header: Header,
+}
+
+#[derive(Debug)]
 pub struct Header {
     magic: u32,
     cpu_type: u32,
@@ -32,9 +37,4 @@ impl Header {
         println!("\treserved:    {:#010x}", self.reserved);
         println!("}}");
     }
-}
-
-#[derive(Debug)]
-pub struct File {
-    header: Header,
 }
