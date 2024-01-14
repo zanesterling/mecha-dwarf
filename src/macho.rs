@@ -10,6 +10,7 @@ pub struct Header {
     cpu_type: CpuType,
     is_64_bit: bool,
     file_type: FileType,
+    // TODO: Add flag: Flags, and deal with transmuting.
 }
 
 impl Header {
@@ -197,6 +198,43 @@ impl FileType {
             0x0C => Some(FileType::CompositeMacho),
             _ => None,
         }
+    }
+}
+
+use bitflags::bitflags;
+bitflags! {
+    pub struct Flags: u32 {
+        // The object file has no undefined references.
+        const NO_UNDEFINED_REFERENCES = 0b0000_0000_0000_0000_0000_0000_0000_0001;
+        // The object file is the output of an incremental link against
+        // a base file and can't be link edited again.
+        const INCREMENTAL_LINK        = 0b0000_0000_0000_0000_0000_0000_0000_0010;
+        // The object file is input for the dynamic linker and can't be
+        // statically link edited again.
+        const DYNAMIC_LINKER_INPUT    = 0b0000_0000_0000_0000_0000_0000_0000_0100;
+        // The object file's undefined references are bound by the
+        // dynamic linker when loaded.
+        const DYNAMIC_LINKER_BINDREF  = 0b0000_0000_0000_0000_0000_0000_0000_1000;
+        // The file has its dynamic undefined references prebound.
+        const DYN_UNDEF_REFS_PREBOUND = 0b0000_0000_0000_0000_0000_0000_0001_0000;
+        // The file has its read-only and write-only segments split.
+        const SPLIT_READWRITE_ONLY    = 0b0000_0000_0000_0000_0000_0000_0010_0000;
+        // The shard library init routine is to be run lazily via
+        // catching  memory faults to its writeable segments (obsolete).
+        const LAZY_SHAREDLIB_INIT     = 0b0000_0000_0000_0000_0000_0000_0100_0000;
+        // The image is using two-level namespace bindings.
+        const TWO_LEVEL_NS_BINDINGS   = 0b0000_0000_0000_0000_0000_0000_1000_0000;
+        // The executable is forcing all images to use flat name space bindings.
+        const FLAT_NS_BINDINGS        = 0b0000_0000_0000_0000_0000_0001_0000_0000;
+        // This umbrella guarantees no multiple definitions of symbols in its
+        // sub-images so the two-level namespapce hints can always be used.
+        const NO_MULTI_DEF_IN_SUBIMGS = 0b0000_0000_0000_0000_0000_0010_0000_0000;
+        // Do not have dyld notify the prebinding agent about this executable.
+        const DYLD_DONT_NOTIFY        = 0b0000_0000_0000_0000_0000_0100_0000_0000;
+        // The binary is not prebound but can have its prebinding redone.
+        // Only used when MH_PREBOUND is not set.
+        const CAN_REDO_PREBINDING     = 0b0000_0000_0000_0000_0000_1000_0000_0000;
+        // TODO: Add the rest of the flags.
     }
 }
 
