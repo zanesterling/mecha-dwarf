@@ -9,6 +9,7 @@ pub struct File {
 pub struct Header {
     cpu_type: CpuType,
     is_64_bit: bool,
+    file_type: FileType,
 }
 
 impl Header {
@@ -19,7 +20,9 @@ impl Header {
     pub fn from_header(raw: RawHeader) -> Result<Header, String> {
         Ok(Header {
             cpu_type: CpuType::from(raw.cpu_type, raw.cpu_subtype)?,
-            is_64_bit: (0x01000000 & raw.cpu_type) != 0
+            is_64_bit: (0x01000000 & raw.cpu_type) != 0,
+            file_type: FileType::from(raw.file_type)
+                .ok_or(format!("bad file type: {}", raw.file_type))?,
         })
     }
 }
@@ -156,6 +159,42 @@ impl ArmSubtype {
             0x0E => Some(ArmSubtype::ArmV6MOrNewer),
             0x0F => Some(ArmSubtype::ArmV7MOrNewer),
             0x10 => Some(ArmSubtype::ArmV7EMOrNewer),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum FileType {
+    RelocatableObj,
+    DemandPagedExe,
+    FixedVmSharedLib,
+    Core,
+    PreloadedExe,
+    DynamicallyBoundSharedLib,
+    DynamicLinkEditor,
+    DynamicallyBoundBundle,
+    SharedLibraryStub, // Stub for static linking only, no section contents.
+    CompanionDebugOnly,
+    X8664Kexts,
+    CompositeMacho,
+}
+
+impl FileType {
+    pub fn from(word: u32) -> Option<FileType> {
+        match word {
+            0x01 => Some(FileType::RelocatableObj),
+            0x02 => Some(FileType::DemandPagedExe),
+            0x03 => Some(FileType::FixedVmSharedLib),
+            0x04 => Some(FileType::Core),
+            0x05 => Some(FileType::PreloadedExe),
+            0x06 => Some(FileType::DynamicallyBoundSharedLib),
+            0x07 => Some(FileType::DynamicLinkEditor),
+            0x08 => Some(FileType::DynamicallyBoundBundle),
+            0x09 => Some(FileType::SharedLibraryStub),
+            0x0A => Some(FileType::CompanionDebugOnly),
+            0x0B => Some(FileType::X8664Kexts),
+            0x0C => Some(FileType::CompositeMacho),
             _ => None,
         }
     }
