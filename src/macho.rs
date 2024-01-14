@@ -10,6 +10,8 @@ pub struct Header {
     cpu_type: CpuType,
     is_64_bit: bool,
     file_type: FileType,
+    loads_count: u32,
+    loads_size: u32,
     // TODO: Add flag: Flags, and deal with transmuting.
 }
 
@@ -24,6 +26,8 @@ impl Header {
             is_64_bit: (0x01000000 & raw.cpu_type) != 0,
             file_type: FileType::from(raw.file_type)
                 .ok_or(format!("bad file type: {}", raw.file_type))?,
+            loads_count: raw.loads_count,
+            loads_size: raw.loads_size,
         })
     }
 }
