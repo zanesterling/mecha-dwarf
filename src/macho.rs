@@ -6,18 +6,6 @@ pub struct File {
 }
 
 #[derive(Debug)]
-pub struct RawHeader {
-    magic: u32,
-    cpu_type: u32,
-    cpu_subtype: u32,
-    file_type: u32,
-    loads_count: u32,
-    loads_size: u32,
-    flags: u32,
-    reserved: u32,
-}
-
-#[derive(Debug)]
 pub struct Header {
     cpu_type: CpuType,
     is_64_bit: bool,
@@ -171,6 +159,18 @@ impl ArmSubtype {
             _ => None,
         }
     }
+}
+
+#[derive(Debug)]
+pub struct RawHeader {
+    magic: u32,
+    cpu_type: u32,
+    cpu_subtype: u32,
+    file_type: u32,
+    loads_count: u32,
+    loads_size: u32,
+    flags: u32,
+    reserved: u32,
 }
 
 impl RawHeader {
