@@ -19,13 +19,12 @@ fn main() {
             println!("{}", e);
             std::process::exit(1);
         });
-    let bytes: &[u8] = &mmap[0..32];
-    let header = macho::Header::from_bytes(bytes)
+    let macho = macho::File::from(&mmap[..])
         .unwrap_or_else(|e| {
             println!("{}", e);
             std::process::exit(1);
         });
-    println!("{:#?}", header);
+    println!("{:#?}", macho);
 }
 
 fn usage(args: Vec<String>) {

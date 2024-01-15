@@ -3,6 +3,33 @@ use std::mem;
 #[derive(Debug)]
 pub struct File {
     header: Header,
+    load_commands: Vec<RawLoadCommand>,
+}
+
+impl File {
+    pub fn from(bytes: &[u8]) -> Result<File, String> {
+        let header = Header::from_bytes(&bytes[0..32])?;
+        let mut bytes_read = 32;
+        let load_commands = {
+            let start_of_loads = bytes_read;
+            let mut vec: Vec<RawLoadCommand> = vec![];
+            for _ in 0..header.loads_count {
+                let load = RawLoadCommand::from(&bytes[bytes_read..]);
+                bytes_read += 8 + load.contents.len();
+                vec.push(load);
+            }
+            let loads_size = bytes_read - start_of_loads;
+            if loads_size != header.loads_size.try_into().unwrap() {
+                return Err(format!("expected loads to be {}B, but instead found {}B",
+                        header.loads_size, loads_size));
+            }
+            vec
+        };
+        Ok(File {
+            header: header,
+            load_commands: load_commands,
+        })
+    }
 }
 
 #[derive(Debug)]
@@ -21,9 +48,20 @@ impl Header {
     }
 
     pub fn from_header(raw: RawHeader) -> Result<Header, String> {
+        let is_64_bit = (0x01000000 & raw.cpu_type) != 0;
+        match raw.magic {
+            0xfeedface if !is_64_bit => {},
+            0xfeedfacf if  is_64_bit => {},
+            magic if is_64_bit => {
+                return Err(format!("arch is 64-bit, but magic number is {:#010x}", magic));
+            }
+            magic => {
+                return Err(format!("arch is 32-bit, but magic number is {:#010x}", magic));
+            }
+        }
         Ok(Header {
             cpu_type: CpuType::from(raw.cpu_type, raw.cpu_subtype)?,
-            is_64_bit: (0x01000000 & raw.cpu_type) != 0,
+            is_64_bit: is_64_bit,
             file_type: FileType::from(raw.file_type)
                 .ok_or(format!("bad file type: {}", raw.file_type))?,
             loads_count: raw.loads_count,
@@ -273,5 +311,27 @@ impl RawHeader {
         println!("\tflags:       {:#010x}", self.flags);
         println!("\treserved:    {:#010x}", self.reserved);
         println!("}}");
+    }
+}
+
+#[derive(Debug)]
+struct RawLoadCommand {
+    ttype: u32,
+    size: u32,
+    // TODO: Make this just a ref to the bytes in the mmap
+    contents: Vec<u8>,
+}
+
+impl RawLoadCommand {
+    pub fn from(bytes: &[u8]) -> RawLoadCommand {
+        let ttype = unsafe { mem::transmute_copy::<[u8; 4], u32>(
+            bytes[0..4].try_into().unwrap()) };
+        let size = unsafe { mem::transmute_copy::<[u8; 4], u32>(
+            bytes[4..8].try_into().unwrap()) };
+        RawLoadCommand {
+            ttype: ttype,
+            size: size,
+            contents: bytes[8..size.try_into().unwrap()].into(),
+        }
     }
 }
