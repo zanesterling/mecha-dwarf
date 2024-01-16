@@ -3,7 +3,7 @@ use std::mem;
 #[derive(Debug)]
 pub struct File {
     pub header: Header,
-    pub load_commands: Vec<RawLoadCommand>,
+    pub load_commands: Vec<LoadCommand>,
 }
 
 impl File {
@@ -12,11 +12,11 @@ impl File {
         let mut bytes_read = 32;
         let load_commands = {
             let start_of_loads = bytes_read;
-            let mut vec: Vec<RawLoadCommand> = vec![];
+            let mut vec: Vec<LoadCommand> = vec![];
             for _ in 0..header.loads_count {
-                let load = RawLoadCommand::from(&bytes[bytes_read..]);
-                bytes_read += 8 + load.contents.len();
+                let (load, read) = LoadCommand::from(&bytes[bytes_read..])?;
                 vec.push(load);
+                bytes_read += read;
             }
             let loads_size = bytes_read - start_of_loads;
             if loads_size != header.loads_size.try_into().unwrap() {
@@ -281,6 +281,107 @@ bitflags! {
 }
 
 #[derive(Debug)]
+pub enum LoadCommand {
+    SymbolTable {
+        symoff: u32,   /* symbol table offset */
+        nsyms: u32,    /* number of symbol table entries */
+        stroff: u32,   /* string table offset */
+        strsize: u32,  /* string table size in bytes */
+    },
+
+    Segment64,
+
+    Uuid([u8; 16]),
+
+    BuildVersion {
+        platform: BuildPlatform,
+        minos: u32,
+        sdk: u32,
+        tools: Vec<BuildToolVersion>,
+    },
+}
+
+#[derive(Debug)]
+pub enum BuildPlatform {
+    MacOS,
+    IOS,
+    TVOS,
+    WatchOS,
+    Other(u32),
+}
+
+impl BuildPlatform {
+    pub fn from(word: u32) -> BuildPlatform {
+        match word {
+            1 => BuildPlatform::MacOS,
+            2 => BuildPlatform::IOS,
+            3 => BuildPlatform::TVOS,
+            4 => BuildPlatform::WatchOS,
+            _ => BuildPlatform::Other(word),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct BuildToolVersion {
+    pub tool: u32,
+    pub version: u32,
+}
+
+impl LoadCommand {
+    pub fn from(bytes: &[u8]) -> Result<(LoadCommand, usize), String> {
+        if bytes.len() < 8 { return Err("ran out of bytes reading load command".to_string()); }
+        let (type_bytes, bytes) = bytes.split_at(mem::size_of::<u32>());
+        let ttype = u32::from_ne_bytes(type_bytes.try_into().unwrap());
+        let (size_bytes, bytes) = bytes.split_at(mem::size_of::<u32>());
+        let size = u32::from_ne_bytes(size_bytes.try_into().unwrap());
+
+        if bytes.len() < size as usize {
+            return Err("ran out of bytes reading load command".to_string());
+        }
+        match ttype {
+            0x02 => Ok(LoadCommand::SymbolTable {
+                symoff:  u32::from_ne_bytes(bytes[ 0.. 4].try_into().unwrap()),
+                nsyms:   u32::from_ne_bytes(bytes[ 4.. 8].try_into().unwrap()),
+                stroff:  u32::from_ne_bytes(bytes[ 8..12].try_into().unwrap()),
+                strsize: u32::from_ne_bytes(bytes[12..16].try_into().unwrap()),
+            }),
+
+            0x19 => Ok(LoadCommand::Segment64), // TODO
+
+            0x1b => Ok(LoadCommand::Uuid(bytes[0..16].try_into().unwrap())),
+
+            0x32 => {
+                let platform = BuildPlatform::from(u32::from_ne_bytes(bytes[0..4].try_into().unwrap()));
+                let minos  = u32::from_ne_bytes(bytes[ 4.. 8].try_into().unwrap());
+                let sdk    = u32::from_ne_bytes(bytes[ 8..12].try_into().unwrap());
+                let ntools = u32::from_ne_bytes(bytes[12..16].try_into().unwrap());
+                let expected_size = 0x18 + ntools * 8;
+                if size != expected_size {
+                    return Err(format!("BuildCommand is {}B, but should be {}B. possible corruption", size, expected_size));
+                }
+                let mut tools: Vec<BuildToolVersion> = vec![];
+                let tool_bytes = &bytes[16..];
+                for i in 0..ntools {
+                    let i = i as usize;
+                    tools.push(BuildToolVersion {
+                        tool:    u32::from_ne_bytes(tool_bytes[8*i   ..8*i +4].try_into().unwrap()),
+                        version: u32::from_ne_bytes(tool_bytes[8*i +4..8*i +8].try_into().unwrap()),
+                    });
+                }
+                Ok(LoadCommand::BuildVersion {
+                    platform,
+                    minos,
+                    sdk,
+                    tools,
+                })
+            },
+            _ => Err(format!("unrecognized load cmd type: {:#04x}", ttype)),
+        }.map(|cmd| (cmd, size as usize))
+    }
+}
+
+#[derive(Debug)]
 pub struct RawHeader {
     pub magic: u32,
     pub cpu_type: u32,
@@ -311,27 +412,5 @@ impl RawHeader {
         println!("\tflags:       {:#010x}", self.flags);
         println!("\treserved:    {:#010x}", self.reserved);
         println!("}}");
-    }
-}
-
-#[derive(Debug)]
-pub struct RawLoadCommand {
-    pub ttype: u32,
-    pub size: u32,
-    // TODO: Make this just a ref to the bytes in the mmap
-    pub contents: Vec<u8>,
-}
-
-impl RawLoadCommand {
-    pub fn from(bytes: &[u8]) -> RawLoadCommand {
-        let ttype = unsafe { mem::transmute_copy::<[u8; 4], u32>(
-            bytes[0..4].try_into().unwrap()) };
-        let size = unsafe { mem::transmute_copy::<[u8; 4], u32>(
-            bytes[4..8].try_into().unwrap()) };
-        RawLoadCommand {
-            ttype: ttype,
-            size: size,
-            contents: bytes[8..size.try_into().unwrap()].into(),
-        }
     }
 }

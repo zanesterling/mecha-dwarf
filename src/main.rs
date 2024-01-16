@@ -24,7 +24,7 @@ fn main() {
             println!("{}", e);
             std::process::exit(1);
         });
-    println!("{:#?}", macho);
+    println!("{:#x?}", macho);
 }
 
 fn usage(args: Vec<String>) {
