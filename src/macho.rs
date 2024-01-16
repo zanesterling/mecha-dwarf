@@ -2,8 +2,8 @@ use std::mem;
 
 #[derive(Debug)]
 pub struct File {
-    header: Header,
-    load_commands: Vec<RawLoadCommand>,
+    pub header: Header,
+    pub load_commands: Vec<RawLoadCommand>,
 }
 
 impl File {
@@ -34,11 +34,11 @@ impl File {
 
 #[derive(Debug)]
 pub struct Header {
-    cpu_type: CpuType,
-    is_64_bit: bool,
-    file_type: FileType,
-    loads_count: u32,
-    loads_size: u32,
+    pub cpu_type: CpuType,
+    pub is_64_bit: bool,
+    pub file_type: FileType,
+    pub loads_count: u32,
+    pub loads_size: u32,
     // TODO: Add flag: Flags, and deal with transmuting.
 }
 
@@ -282,14 +282,14 @@ bitflags! {
 
 #[derive(Debug)]
 pub struct RawHeader {
-    magic: u32,
-    cpu_type: u32,
-    cpu_subtype: u32,
-    file_type: u32,
-    loads_count: u32,
-    loads_size: u32,
-    flags: u32,
-    reserved: u32,
+    pub magic: u32,
+    pub cpu_type: u32,
+    pub cpu_subtype: u32,
+    pub file_type: u32,
+    pub loads_count: u32,
+    pub loads_size: u32,
+    pub flags: u32,
+    pub reserved: u32,
 }
 
 impl RawHeader {
@@ -315,11 +315,11 @@ impl RawHeader {
 }
 
 #[derive(Debug)]
-struct RawLoadCommand {
-    ttype: u32,
-    size: u32,
+pub struct RawLoadCommand {
+    pub ttype: u32,
+    pub size: u32,
     // TODO: Make this just a ref to the bytes in the mmap
-    contents: Vec<u8>,
+    pub contents: Vec<u8>,
 }
 
 impl RawLoadCommand {
