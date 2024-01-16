@@ -26,8 +26,8 @@ impl File {
             vec
         };
         Ok(File {
-            header: header,
-            load_commands: load_commands,
+            header,
+            load_commands,
         })
     }
 }
@@ -102,14 +102,14 @@ impl CpuType {
             0x06 => Ok(CpuType::MC680x0),
             0x07 => X86Subtype::from(cpu_subtype)
                 .ok_or(format!("bad cpu subtype: {}", cpu_subtype))
-                .map(|t| CpuType::X86(t)),
+                .map(CpuType::X86),
             0x08 => Ok(CpuType::Mips),
             0x09 => Ok(CpuType::Ns32352),
             0x0A => Ok(CpuType::Mc98000),
             0x0B => Ok(CpuType::Hppa),
             0x0C => ArmSubtype::from(cpu_subtype)
                 .ok_or(format!("bad cpu subtype: {}", cpu_subtype))
-                .map(|t| CpuType::Arm(t)),
+                .map(CpuType::Arm),
             0x0D => Ok(CpuType::Mc88000),
             0x0E => Ok(CpuType::Sparc),
             0x0F => Ok(CpuType::I860BigEndian),
