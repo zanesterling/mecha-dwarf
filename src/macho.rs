@@ -280,6 +280,8 @@ bitflags! {
     }
 }
 
+type vm_prot_t = u32;
+
 #[derive(Debug)]
 pub enum LoadCommand {
     SymbolTable {
@@ -289,7 +291,17 @@ pub enum LoadCommand {
         strsize: u32,  /* string table size in bytes */
     },
 
-    Segment64,
+    Segment64 {
+        segname:  String,
+        vmaddr:   u64,   /* memory address of this segment */
+        vmsize:   u64,   /* memory size of this segment */
+        fileoff:  u64,   /* file offset of this segment */
+        filesize: u64,   /* amount to map from the file */
+        maxprot:  vm_prot_t,      /* maximum VM protection */
+        initprot: vm_prot_t,      /* initial VM protection */
+        nsects:   u32,     /* number of sections in segment */
+        flags:    u32,      /* flags */
+    },
 
     Uuid([u8; 16]),
 
@@ -347,7 +359,20 @@ impl LoadCommand {
                 strsize: u32::from_ne_bytes(bytes[12..16].try_into().unwrap()),
             }),
 
-            0x19 => Ok(LoadCommand::Segment64), // TODO
+            0x19 => Ok(LoadCommand::Segment64 {
+                segname:  std::str::from_utf8(&bytes[0..16])
+                    .map_err(|e| format!("{}", e))?
+                    .trim_matches(char::from(0))
+                    .to_string(),
+                vmaddr:   u64::from_ne_bytes(bytes[16..24].try_into().unwrap()),
+                vmsize:   u64::from_ne_bytes(bytes[24..32].try_into().unwrap()),
+                fileoff:  u64::from_ne_bytes(bytes[32..40].try_into().unwrap()),
+                filesize: u64::from_ne_bytes(bytes[40..48].try_into().unwrap()),
+                maxprot:  u32::from_ne_bytes(bytes[48..52].try_into().unwrap()),
+                initprot: u32::from_ne_bytes(bytes[52..56].try_into().unwrap()),
+                nsects:   u32::from_ne_bytes(bytes[56..60].try_into().unwrap()),
+                flags:    u32::from_ne_bytes(bytes[60..64].try_into().unwrap()),
+            }),
 
             0x1b => Ok(LoadCommand::Uuid(bytes[0..16].try_into().unwrap())),
 
