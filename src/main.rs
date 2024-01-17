@@ -24,7 +24,21 @@ fn main() {
             println!("{}", e);
             std::process::exit(1);
         });
-    println!("{:#x?}", macho);
+
+    let mut dwarf: Option<macho::Segment64> = None;
+    for cmd in macho.load_commands {
+        if let macho::LoadCommand::Segment64(seg) = cmd {
+            if seg.segname == "__DWARF".to_string() {
+                dwarf = Some(seg);
+            }
+        }
+    }
+    if let None = dwarf {
+        println!("error: file has no __DWARF segment");
+        std::process::exit(1);
+    }
+    let dwarf = dwarf.unwrap();
+    println!("{:#x?}", dwarf);
 }
 
 fn usage(args: Vec<String>) {

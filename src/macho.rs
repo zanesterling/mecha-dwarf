@@ -280,7 +280,7 @@ bitflags! {
     }
 }
 
-type vm_prot_t = u32;
+type VmProtT = u32;
 
 #[derive(Debug)]
 pub enum LoadCommand {
@@ -291,17 +291,7 @@ pub enum LoadCommand {
         strsize: u32,  /* string table size in bytes */
     },
 
-    Segment64 {
-        segname:  String,
-        vmaddr:   u64,   /* memory address of this segment */
-        vmsize:   u64,   /* memory size of this segment */
-        fileoff:  u64,   /* file offset of this segment */
-        filesize: u64,   /* amount to map from the file */
-        maxprot:  vm_prot_t,      /* maximum VM protection */
-        initprot: vm_prot_t,      /* initial VM protection */
-        nsects:   u32,     /* number of sections in segment */
-        flags:    u32,      /* flags */
-    },
+    Segment64(Segment64),
 
     Uuid([u8; 16]),
 
@@ -311,6 +301,19 @@ pub enum LoadCommand {
         sdk: u32,
         tools: Vec<BuildToolVersion>,
     },
+}
+
+#[derive(Debug)]
+pub struct Segment64 {
+    pub segname:  String,
+    pub vmaddr:   u64,   /* memory address of this segment */
+    pub vmsize:   u64,   /* memory size of this segment */
+    pub fileoff:  u64,   /* file offset of this segment */
+    pub filesize: u64,   /* amount to map from the file */
+    pub maxprot:  VmProtT,      /* maximum VM protection */
+    pub initprot: VmProtT,      /* initial VM protection */
+    pub nsects:   u32,     /* number of sections in segment */
+    pub flags:    u32,      /* flags */
 }
 
 #[derive(Debug)]
@@ -359,7 +362,7 @@ impl LoadCommand {
                 strsize: u32::from_ne_bytes(bytes[12..16].try_into().unwrap()),
             }),
 
-            0x19 => Ok(LoadCommand::Segment64 {
+            0x19 => Ok(LoadCommand::Segment64(Segment64 {
                 segname:  std::str::from_utf8(&bytes[0..16])
                     .map_err(|e| format!("{}", e))?
                     .trim_matches(char::from(0))
@@ -372,7 +375,7 @@ impl LoadCommand {
                 initprot: u32::from_ne_bytes(bytes[52..56].try_into().unwrap()),
                 nsects:   u32::from_ne_bytes(bytes[56..60].try_into().unwrap()),
                 flags:    u32::from_ne_bytes(bytes[60..64].try_into().unwrap()),
-            }),
+            })),
 
             0x1b => Ok(LoadCommand::Uuid(bytes[0..16].try_into().unwrap())),
 
