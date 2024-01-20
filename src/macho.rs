@@ -301,6 +301,8 @@ pub enum LoadCommand {
         sdk: u32,
         tools: Vec<BuildToolVersion>,
     },
+
+    UnrecognizedLoad(u32),
 }
 
 #[derive(Debug)]
@@ -404,7 +406,8 @@ impl LoadCommand {
                     tools,
                 })
             },
-            _ => Err(format!("unrecognized load cmd type: {:#04x}", ttype)),
+            _ => Ok(LoadCommand::UnrecognizedLoad(ttype)),
+                // Err(format!("unrecognized load cmd type: {:#04x}", ttype)),
         }.map(|cmd| (cmd, size as usize))
     }
 }
