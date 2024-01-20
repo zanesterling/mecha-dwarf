@@ -428,17 +428,4 @@ impl RawHeader {
                 bytes[0..32].try_into().unwrap())
         }
     }
-
-    pub fn show(&self) {
-        println!("Header {{");
-        println!("\tmagic:       {:#010x}", self.magic);
-        println!("\tcpu_type:    {:#010x}", self.cpu_type);
-        println!("\tcpu_subtype: {:#010x}", self.cpu_subtype);
-        println!("\tfile_type:   {:#010x}", self.file_type);
-        println!("\tloads_count: {:#010x}", self.loads_count);
-        println!("\tloads_size:  {:#010x}", self.loads_size);
-        println!("\tflags:       {:#010x}", self.flags);
-        println!("\treserved:    {:#010x}", self.reserved);
-        println!("}}");
-    }
 }
