@@ -311,6 +311,7 @@ pub enum LoadCommandDetails {
     UnrecognizedLoad(u32),
 }
 
+const SEGMENT64_SIZE: usize = 64;
 #[derive(Debug)]
 pub struct Segment64 {
     pub segname:  String,
@@ -322,6 +323,7 @@ pub struct Segment64 {
     pub initprot: VmProtT,      /* initial VM protection */
     pub nsects:   u32,     /* number of sections in segment */
     pub flags:    u32,      /* flags */
+    pub sections: Vec<Section64>,
 }
 
 #[derive(Debug)]
@@ -370,20 +372,30 @@ impl LoadCommand {
                 strsize: u32::from_ne_bytes(bytes[12..16].try_into().unwrap()),
             }),
 
-            0x19 => Ok(LoadCommandDetails::Segment64(Segment64 {
-                segname:  std::str::from_utf8(&bytes[0..16])
-                    .map_err(|e| format!("{}", e))?
-                    .trim_matches(char::from(0))
-                    .to_string(),
-                vmaddr:   u64::from_ne_bytes(bytes[16..24].try_into().unwrap()),
-                vmsize:   u64::from_ne_bytes(bytes[24..32].try_into().unwrap()),
-                fileoff:  u64::from_ne_bytes(bytes[32..40].try_into().unwrap()),
-                filesize: u64::from_ne_bytes(bytes[40..48].try_into().unwrap()),
-                maxprot:  u32::from_ne_bytes(bytes[48..52].try_into().unwrap()),
-                initprot: u32::from_ne_bytes(bytes[52..56].try_into().unwrap()),
-                nsects:   u32::from_ne_bytes(bytes[56..60].try_into().unwrap()),
-                flags:    u32::from_ne_bytes(bytes[60..64].try_into().unwrap()),
-            })),
+            0x19 => {
+                let nsects = u32::from_ne_bytes(bytes[56..60].try_into().unwrap());
+                let mut sections = vec![];
+                for i in 0..nsects as usize {
+                    let start = SEGMENT64_SIZE + i*Section64::SIZE;
+                    let end = start + Section64::SIZE;
+                    sections.push(Section64::from(&bytes[start..end]));
+                }
+                Ok(LoadCommandDetails::Segment64(Segment64 {
+                    segname:  std::str::from_utf8(&bytes[0..16])
+                        .map_err(|e| format!("{}", e))?
+                        .trim_matches(char::from(0))
+                        .to_string(),
+                    vmaddr:   u64::from_ne_bytes(bytes[16..24].try_into().unwrap()),
+                    vmsize:   u64::from_ne_bytes(bytes[24..32].try_into().unwrap()),
+                    fileoff:  u64::from_ne_bytes(bytes[32..40].try_into().unwrap()),
+                    filesize: u64::from_ne_bytes(bytes[40..48].try_into().unwrap()),
+                    maxprot:  u32::from_ne_bytes(bytes[48..52].try_into().unwrap()),
+                    initprot: u32::from_ne_bytes(bytes[52..56].try_into().unwrap()),
+                    nsects,
+                    flags:    u32::from_ne_bytes(bytes[60..64].try_into().unwrap()),
+                    sections,
+                }))
+            }
 
             0x1b => Ok(LoadCommandDetails::Uuid(bytes[0..16].try_into().unwrap())),
 
@@ -419,6 +431,46 @@ impl LoadCommand {
             size,
             details,
         }, size as usize))
+    }
+}
+
+#[derive(Debug)]
+pub struct Section64 {
+    pub sectname: String,
+    pub segname: String,
+    pub addr: u64,
+    pub size: u64,
+    pub offset: u32,
+    pub align: u32,
+    pub reloff: u32,
+    pub nreloc: u32,
+    pub flags: u32,
+    pub reserved1: u32,
+    pub reserved2: u32,
+}
+
+impl Section64 {
+    const SIZE: usize = 80; // Round up from 76 to word boundary.
+    pub fn from(bytes: &[u8]) -> Section64 {
+        Section64 {
+            sectname:  std::str::from_utf8(&bytes[ 0..16])
+                .unwrap()
+                .trim_matches(char::from(0))
+                .to_string(),
+            segname:  std::str::from_utf8(&bytes[16..32])
+                .unwrap()
+                .trim_matches(char::from(0))
+                .to_string(),
+            addr:      u64::from_ne_bytes(bytes[32..40].try_into().unwrap()),
+            size:      u64::from_ne_bytes(bytes[40..48].try_into().unwrap()),
+            offset:    u32::from_ne_bytes(bytes[48..52].try_into().unwrap()),
+            align:     u32::from_ne_bytes(bytes[52..56].try_into().unwrap()),
+            reloff:    u32::from_ne_bytes(bytes[56..60].try_into().unwrap()),
+            nreloc:    u32::from_ne_bytes(bytes[60..64].try_into().unwrap()),
+            flags:     u32::from_ne_bytes(bytes[64..68].try_into().unwrap()),
+            reserved1: u32::from_ne_bytes(bytes[68..72].try_into().unwrap()),
+            reserved2: u32::from_ne_bytes(bytes[72..76].try_into().unwrap()),
+        }
     }
 }
 
