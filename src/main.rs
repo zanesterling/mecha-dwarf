@@ -27,7 +27,7 @@ fn main() {
 
     let mut dwarf: Option<macho::Segment64> = None;
     for cmd in macho.load_commands {
-        if let macho::LoadCommand::Segment64(seg) = cmd {
+        if let macho::LoadCommandDetails::Segment64(seg) = cmd.details {
             if seg.segname == "__DWARF".to_string() {
                 dwarf = Some(seg);
             }

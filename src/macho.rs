@@ -283,7 +283,13 @@ bitflags! {
 type VmProtT = u32;
 
 #[derive(Debug)]
-pub enum LoadCommand {
+pub struct LoadCommand {
+    pub size: u32,
+    pub details: LoadCommandDetails,
+}
+
+#[derive(Debug)]
+pub enum LoadCommandDetails {
     SymbolTable {
         symoff: u32,   /* symbol table offset */
         nsyms: u32,    /* number of symbol table entries */
@@ -356,15 +362,15 @@ impl LoadCommand {
         if bytes.len() < size as usize {
             return Err("ran out of bytes reading load command".to_string());
         }
-        match ttype {
-            0x02 => Ok(LoadCommand::SymbolTable {
+        let details = match ttype {
+            0x02 => Ok::<LoadCommandDetails, String>(LoadCommandDetails::SymbolTable {
                 symoff:  u32::from_ne_bytes(bytes[ 0.. 4].try_into().unwrap()),
                 nsyms:   u32::from_ne_bytes(bytes[ 4.. 8].try_into().unwrap()),
                 stroff:  u32::from_ne_bytes(bytes[ 8..12].try_into().unwrap()),
                 strsize: u32::from_ne_bytes(bytes[12..16].try_into().unwrap()),
             }),
 
-            0x19 => Ok(LoadCommand::Segment64(Segment64 {
+            0x19 => Ok(LoadCommandDetails::Segment64(Segment64 {
                 segname:  std::str::from_utf8(&bytes[0..16])
                     .map_err(|e| format!("{}", e))?
                     .trim_matches(char::from(0))
@@ -379,7 +385,7 @@ impl LoadCommand {
                 flags:    u32::from_ne_bytes(bytes[60..64].try_into().unwrap()),
             })),
 
-            0x1b => Ok(LoadCommand::Uuid(bytes[0..16].try_into().unwrap())),
+            0x1b => Ok(LoadCommandDetails::Uuid(bytes[0..16].try_into().unwrap())),
 
             0x32 => {
                 let platform = BuildPlatform::from(u32::from_ne_bytes(bytes[0..4].try_into().unwrap()));
@@ -399,16 +405,20 @@ impl LoadCommand {
                         version: u32::from_ne_bytes(tool_bytes[8*i +4..8*i +8].try_into().unwrap()),
                     });
                 }
-                Ok(LoadCommand::BuildVersion {
+                Ok(LoadCommandDetails::BuildVersion {
                     platform,
                     minos,
                     sdk,
                     tools,
                 })
             },
-            _ => Ok(LoadCommand::UnrecognizedLoad(ttype)),
+            _ => Ok(LoadCommandDetails::UnrecognizedLoad(ttype)),
                 // Err(format!("unrecognized load cmd type: {:#04x}", ttype)),
-        }.map(|cmd| (cmd, size as usize))
+        }?;
+        Ok((LoadCommand {
+            size,
+            details,
+        }, size as usize))
     }
 }
 
