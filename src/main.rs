@@ -3,6 +3,7 @@ use std::fs::File;
 use memmap::{ Mmap, MmapOptions };
 
 mod dwarf;
+mod leb;
 mod macho;
 
 struct Config {
