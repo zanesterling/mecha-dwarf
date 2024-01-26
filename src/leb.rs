@@ -4,6 +4,17 @@
 //   https://en.wikipedia.org/wiki/LEB128
 // You can also find it documented in the DWARF documents at dwarfstd.org.
 
+#[derive(PartialEq, Debug)]
+pub enum Error {
+    LastByteHasContinueBit,
+}
+
+impl std::string::ToString for Error {
+    fn to_string(&self) -> String {
+        "last byte in LEB has continue bit set".to_string()
+    }
+}
+
 pub fn uleb128_encode(mut n: u64) -> Box<[u8]> {
     let mut out = vec![];
     loop {
@@ -16,12 +27,16 @@ pub fn uleb128_encode(mut n: u64) -> Box<[u8]> {
     out.into_boxed_slice()
 }
 
-pub fn uleb128_decode(bytes: Box<[u8]>) -> u64 {
+pub fn uleb128_decode(bytes: &[u8]) -> Result<u64, Error> {
     let mut val: u64 = 0;
-    for b in (*bytes).into_iter().rev() {
-        val = (val << 7) | (b & 0x7f) as u64;
+    let mut shift = 0;
+    for b in bytes {
+        let byte = (b & 0x7f) as u64;
+        val |= byte << shift;
+        if b & 0x80 == 0 { return Ok(val); }
+        shift += 7;
     }
-    return val;
+    Err(Error::LastByteHasContinueBit)
 }
 
 pub fn ileb128_encode(mut n: i64) -> Box<[u8]> {
@@ -66,12 +81,12 @@ mod tests {
 
     #[test]
     fn uleb128_decode_works() {
-        assert_eq!(uleb128_decode(Box::new([2])),            2);
-        assert_eq!(uleb128_decode(Box::new([127])),          127);
-        assert_eq!(uleb128_decode(Box::new([0x80|0,  1])),   128);
-        assert_eq!(uleb128_decode(Box::new([0x80|1,  1])),   129);
-        assert_eq!(uleb128_decode(Box::new([0x80|2,  1])),   130);
-        assert_eq!(uleb128_decode(Box::new([0x80|57, 100])), 12857);
+        assert_eq!(uleb128_decode(&[2]),            Ok(2));
+        assert_eq!(uleb128_decode(&[127]),          Ok(127));
+        assert_eq!(uleb128_decode(&[0x80|0,  1]),   Ok(128));
+        assert_eq!(uleb128_decode(&[0x80|1,  1]),   Ok(129));
+        assert_eq!(uleb128_decode(&[0x80|2,  1]),   Ok(130));
+        assert_eq!(uleb128_decode(&[0x80|57, 100]), Ok(12857));
     }
 
     #[test]
