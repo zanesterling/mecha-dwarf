@@ -41,7 +41,13 @@ fn main() {
         std::process::exit(1);
     }
     let dwarf = dwarf.unwrap();
-    println!("{:#x?}", dwarf);
+    if config.verbose {
+        println!("{:#x?}", dwarf);
+    }
+
+    for sec in dwarf.sections {
+        println!("{:16} {:#x} {:#x}", sec.sectname, sec.offset, sec.size);
+    }
 }
 
 fn usage(args: Vec<String>) {
