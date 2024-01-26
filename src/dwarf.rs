@@ -162,6 +162,7 @@ pub enum Section {
 
     DebugInfo {
         header: CUHeader,
+        dies: Vec<DIE>,
     },
 
     Unrecognized {
@@ -176,6 +177,7 @@ impl Section {
             "__debug_info" => {
                 Ok(Section::DebugInfo {
                     header: CUHeader::from(&bytes[0..11]),
+                    dies: vec![], // TODO: Read dies nuts
                 })
             },
 
@@ -233,6 +235,160 @@ impl CUHeader {
             version,
             debug_abbrev_offset,
             address_size,
+        }
+    }
+}
+
+// Debugging Information Entry
+#[derive(Debug)]
+pub struct DIE {
+    tag: DIETag,
+    // attrs: Vec<DIEAttribute>,
+}
+
+impl DIE {
+    pub fn from(bytes: &[u8]) -> DIE {
+        // TODO: Read a LEB128 key and search the .debug_abbrev section for it.
+        DIE {
+            tag: DIETag::ArrayType, //TODO
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum DIETag {
+    ArrayType,
+    ClassType,
+    EntryPoint,
+    EnumerationType,
+    FormalParameter,
+    ImportedDeclaration,
+    Label,
+    LexicalBlock,
+    Member,
+    PointerType,
+    ReferenceType,
+    CompileUnit,
+    StringType,
+    StructureType,
+    SubroutineType,
+    Typedef,
+    UnionType,
+    UnspecifiedParameters,
+    Variant,
+    CommonBlock,
+    CommonInclusion,
+    Inheritance,
+    InlinedSubroutine,
+    Module,
+    PtrToMemberType,
+    SetType,
+    SubrangeType,
+    WithStmt,
+    AccessDeclaration,
+    BaseType,
+    CatchBlock,
+    ConstType,
+    Constant,
+    Enumerator,
+    FileType,
+    Friend,
+    Namelist,
+    NamelistItem,
+    PackedType,
+    Subprogram,
+    TemplateTypeParameter,
+    TemplateValueParameter,
+    ThrownType,
+    TryBlock,
+    VariantPart,
+    Variable,
+    VolatileType,
+    DwarfProcedure,
+    RestrictType,
+    InterfaceType,
+    Namespace,
+    ImportedModule,
+    UnspecifiedType,
+    PartialUnit,
+    ImportedUnit,
+    Condition,
+    SharedType,
+    TypeUnit,
+    RvalueReferenceType,
+    TemplateAlias,
+    LoUser,
+    HiUser,
+}
+
+impl DIETag {
+    // TODO: this u16 is the output of LEB128 decoding. Arguably should be
+    // size-invariant.
+    pub fn from(value: u16) -> Result<DIETag, String> {
+        match value {
+           0x01   => Ok(DIETag::ArrayType),
+           0x02   => Ok(DIETag::ClassType),
+           0x03   => Ok(DIETag::EntryPoint),
+           0x04   => Ok(DIETag::EnumerationType),
+           0x05   => Ok(DIETag::FormalParameter),
+           0x08   => Ok(DIETag::ImportedDeclaration),
+           0x0a   => Ok(DIETag::Label),
+           0x0b   => Ok(DIETag::LexicalBlock),
+           0x0d   => Ok(DIETag::Member),
+           0x0f   => Ok(DIETag::PointerType),
+           0x10   => Ok(DIETag::ReferenceType),
+           0x11   => Ok(DIETag::CompileUnit),
+           0x12   => Ok(DIETag::StringType),
+           0x13   => Ok(DIETag::StructureType),
+           0x15   => Ok(DIETag::SubroutineType),
+           0x16   => Ok(DIETag::Typedef),
+           0x17   => Ok(DIETag::UnionType),
+           0x18   => Ok(DIETag::UnspecifiedParameters),
+           0x19   => Ok(DIETag::Variant),
+           0x1a   => Ok(DIETag::CommonBlock),
+           0x1b   => Ok(DIETag::CommonInclusion ),
+           0x1c   => Ok(DIETag::Inheritance),
+           0x1d   => Ok(DIETag::InlinedSubroutine),
+           0x1e   => Ok(DIETag::Module),
+           0x1f   => Ok(DIETag::PtrToMemberType),
+           0x20   => Ok(DIETag::SetType),
+           0x21   => Ok(DIETag::SubrangeType),
+           0x22   => Ok(DIETag::WithStmt),
+           0x23   => Ok(DIETag::AccessDeclaration),
+           0x24   => Ok(DIETag::BaseType),
+           0x25   => Ok(DIETag::CatchBlock),
+           0x26   => Ok(DIETag::ConstType),
+           0x27   => Ok(DIETag::Constant),
+           0x28   => Ok(DIETag::Enumerator),
+           0x29   => Ok(DIETag::FileType),
+           0x2a   => Ok(DIETag::Friend),
+           0x2b   => Ok(DIETag::Namelist),
+           0x2c   => Ok(DIETag::NamelistItem),
+           0x2d   => Ok(DIETag::PackedType),
+           0x2e   => Ok(DIETag::Subprogram),
+           0x2f   => Ok(DIETag::TemplateTypeParameter),
+           0x30   => Ok(DIETag::TemplateValueParameter),
+           0x31   => Ok(DIETag::ThrownType),
+           0x32   => Ok(DIETag::TryBlock),
+           0x33   => Ok(DIETag::VariantPart),
+           0x34   => Ok(DIETag::Variable),
+           0x35   => Ok(DIETag::VolatileType),
+           0x36   => Ok(DIETag::DwarfProcedure),
+           0x37   => Ok(DIETag::RestrictType),
+           0x38   => Ok(DIETag::InterfaceType),
+           0x39   => Ok(DIETag::Namespace),
+           0x3a   => Ok(DIETag::ImportedModule),
+           0x3b   => Ok(DIETag::UnspecifiedType),
+           0x3c   => Ok(DIETag::PartialUnit),
+           0x3d   => Ok(DIETag::ImportedUnit),
+           0x3f   => Ok(DIETag::Condition),
+           0x40   => Ok(DIETag::SharedType),
+           0x41   => Ok(DIETag::TypeUnit),
+           0x42   => Ok(DIETag::RvalueReferenceType),
+           0x43   => Ok(DIETag::TemplateAlias),
+           0x4080 => Ok(DIETag::LoUser),
+           0xffff => Ok(DIETag::HiUser),
+           _ => Err(format!("bad DIE tag {:#x}", value)),
         }
     }
 }
