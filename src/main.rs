@@ -45,12 +45,19 @@ fn main() {
     if config.verbose {
         println!("{:#x?}", dwarf_seg);
     }
-    for sec in &dwarf_seg.sections {
-        println!("{:16} {:#x} {:#x}", sec.sectname, sec.offset, sec.size);
-    }
 
-    let dwarf_file = dwarf::File::from(dwarf_seg, &mmap);
-    println!("{:#x?}", dwarf_file);
+    let dwarf_file = dwarf::File::from(dwarf_seg, &mmap)
+        .unwrap_or_else(|e| {
+            println!("error parsing dwarf: {}", e);
+            std::process::exit(1);
+        });
+    for s in &dwarf_file.sections {
+        match s {
+            dwarf::Section::Unrecognized { name, contents } =>
+                println!("Unrecognized {:16} {:#x} bytes", name, contents.len()),
+            s => println!("{:#x?}", s),
+        }
+    }
 }
 
 fn usage(args: Vec<String>) {
