@@ -5,16 +5,14 @@
 // You can also find it documented in the DWARF documents at dwarfstd.org.
 
 pub fn uleb128_encode(mut n: u64) -> Box<[u8]> {
-    if n == 0 { return Box::new([0]) }
     let mut out = vec![];
-    while n > 0 {
-        let data128 = (n & 0x7f) as u8; // get 7 bits
-        out.push(data128 | 0x80); // set top bit: there's another byte
+    loop {
+        let mut byte = (n as u8 & 0x7f) | 0x80; // get 7 bits; set top bit
         n >>= 7;
+        if n == 0 { byte &= 0x7f; }
+        out.push(byte);
+        if n == 0 { break }
     }
-    let len = out.len();
-    let last_byte = out[len - 1];
-    out[len - 1] = last_byte & 0x7f; // zero last byte's top bit
     out.into_boxed_slice()
 }
 
