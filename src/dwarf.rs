@@ -160,6 +160,10 @@ pub enum Section {
         file_names: Vec<DebugLineFileEntry>,
     },
 
+    DebugInfo {
+        header: CUHeader,
+    },
+
     Unrecognized {
         name: String,
         contents: Vec<u8>,
@@ -169,6 +173,12 @@ pub enum Section {
 impl Section {
     pub fn from(name: &str, bytes: &[u8]) -> Result<Section, String> {
         match name {
+            "__debug_info" => {
+                Ok(Section::DebugInfo {
+                    header: CUHeader::from(&bytes[0..11]),
+                })
+            },
+
             _ => Ok(Section::Unrecognized {
                 name: name.to_string(),
                 contents: bytes.to_vec(),
@@ -182,28 +192,47 @@ pub struct DebugLineFileEntry {
     // TODO: Fill out. Find docs in Section::DebugLine.
 }
 
+// Compile Unit Header
 #[derive(Debug)]
 pub struct CUHeader {
+    // A 4-byte or 12-byte unsigned integer representing the length of the
+    // .debug_info contribution for that compilation unit, not including the
+    // length field itself. In the 32-bit DWARF format, this is a 4-byte
+    // unsigned integer (which must be less than 0xfffffff0); in the 64-bit
+    // DWARF format, this consists of the 4-byte value 0xffffffff followed by an
+    // 8- byte unsigned integer that gives the actual length (see Section 7.4).
     pub unit_length: u32, // NOTE: In DWARF64, this would be 0xffffffff plus 8 bytes.
+
+    // A 2-byte unsigned integer representing the version of the DWARF
+    // information for the compilation unit (see Appendix F). The value in this
+    // field is 4.
     pub version: u16,
-    pub unit_type: u16,
+
+    // A 4-byte or 8-byte unsigned offset into the .debug_abbrev section. This
+    // offset associates the compilation unit with a particular set of debugging
+    // information entry abbreviations. In the 32-bit DWARF format, this is a
+    // 4-byte unsigned length; in the 64-bit DWARF format, this is an 8-byte
+    // unsigned length (see Section 7.4).
+    pub debug_abbrev_offset: u32, // NOTE: In DWARF64, this would be 0xffffffff plus 8 bytes.
+
+    // A 1-byte unsigned integer representing the size in bytes of an address on
+    // the target architecture. If the system uses segmented addressing, this
+    // value represents the size of the offset portion of an address.
     pub address_size: u8,
-    pub debug_abbrev_offset: u32,
 }
 
 impl CUHeader {
-    pub fn from(bytes: &[u8]) -> Result<CUHeader, String> {
+    // Consumes 11 bytes.
+    pub fn from(bytes: &[u8]) -> CUHeader {
         let unit_length         = u32::from_ne_bytes(bytes[ 0.. 4].try_into().unwrap());
         let version             = u16::from_ne_bytes(bytes[ 4.. 6].try_into().unwrap());
-        let unit_type           = u16::from_ne_bytes(bytes[ 6.. 8].try_into().unwrap());
-        let address_size        = bytes[8];
-        let debug_abbrev_offset = u32::from_ne_bytes(bytes[ 9..13].try_into().unwrap());
-        Ok(CUHeader {
+        let debug_abbrev_offset = u32::from_ne_bytes(bytes[ 6.. 10].try_into().unwrap());
+        let address_size        = bytes[10];
+        CUHeader {
             unit_length,
             version,
-            unit_type,
-            address_size,
             debug_abbrev_offset,
-        })
+            address_size,
+        }
     }
 }
