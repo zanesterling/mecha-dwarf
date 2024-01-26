@@ -27,13 +27,15 @@ pub fn uleb128_encode(mut n: u64) -> Box<[u8]> {
     out.into_boxed_slice()
 }
 
-pub fn uleb128_decode(bytes: &[u8]) -> Result<u64, Error> {
+// Reads a ULEB128-encoded value from the input,
+// and returns the value and the number of bytes consumed.
+pub fn uleb128_decode(bytes: &[u8]) -> Result<(u64, usize), Error> {
     let mut val: u64 = 0;
     let mut shift = 0;
-    for b in bytes {
+    for (i, b) in bytes.iter().enumerate() {
         let byte = (b & 0x7f) as u64;
         val |= byte << shift;
-        if b & 0x80 == 0 { return Ok(val); }
+        if b & 0x80 == 0 { return Ok((val, i+1)); }
         shift += 7;
     }
     Err(Error::LastByteHasContinueBit)
@@ -81,12 +83,12 @@ mod tests {
 
     #[test]
     fn uleb128_decode_works() {
-        assert_eq!(uleb128_decode(&[2]),            Ok(2));
-        assert_eq!(uleb128_decode(&[127]),          Ok(127));
-        assert_eq!(uleb128_decode(&[0x80|0,  1]),   Ok(128));
-        assert_eq!(uleb128_decode(&[0x80|1,  1]),   Ok(129));
-        assert_eq!(uleb128_decode(&[0x80|2,  1]),   Ok(130));
-        assert_eq!(uleb128_decode(&[0x80|57, 100]), Ok(12857));
+        assert_eq!(uleb128_decode(&[2]),            Ok((2, 1)));
+        assert_eq!(uleb128_decode(&[127]),          Ok((127, 1)));
+        assert_eq!(uleb128_decode(&[0x80|0,  1]),   Ok((128, 2)));
+        assert_eq!(uleb128_decode(&[0x80|1,  1]),   Ok((129, 2)));
+        assert_eq!(uleb128_decode(&[0x80|2,  1]),   Ok((130, 2)));
+        assert_eq!(uleb128_decode(&[0x80|57, 100]), Ok((12857, 2)));
     }
 
     #[test]
