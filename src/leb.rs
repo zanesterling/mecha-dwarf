@@ -26,12 +26,30 @@ pub fn uleb128_decode(bytes: Box<[u8]>) -> u64 {
     return val;
 }
 
+pub fn ileb128_encode(mut n: i64) -> Box<[u8]> {
+    let mut out = vec![];
+    let mut more = true;
+    while more {
+        let mut byte: u8 = 0x7f & (n as u8);
+        n >>= 7;
+        if (n == 0  && (byte & 0x40) == 0) ||
+           (n == -1 && (byte & 0x40) != 0) {
+            more = false;
+        } else {
+            byte |= 0x80;
+        }
+        out.push(byte);
+    }
+    out.into_boxed_slice()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn uleb128_encode_works() {
+        assert_eq!(*uleb128_encode(0),     [0]);
         assert_eq!(*uleb128_encode(2),     [2]);
         assert_eq!(*uleb128_encode(127),   [127]);
         assert_eq!(*uleb128_encode(128),   [0x80|0,  1]);
@@ -48,5 +66,19 @@ mod tests {
         assert_eq!(uleb128_decode(Box::new([0x80|1,  1])),   129);
         assert_eq!(uleb128_decode(Box::new([0x80|2,  1])),   130);
         assert_eq!(uleb128_decode(Box::new([0x80|57, 100])), 12857);
+    }
+
+    #[test]
+    fn ileb128_encode_works() {
+        assert_eq!(*ileb128_encode(0),    [0]);
+        assert_eq!(*ileb128_encode(2),    [2]);
+        assert_eq!(*ileb128_encode(127),  [0x80|127,  0]);
+        assert_eq!(*ileb128_encode(128),  [0x80|0,    1]);
+        assert_eq!(*ileb128_encode(129),  [0x80|1,    1]);
+        assert_eq!(*ileb128_encode(-1),   [0x7f]);
+        assert_eq!(*ileb128_encode(-2),   [0x7e]);
+        assert_eq!(*ileb128_encode(-127), [0x80|1,    0x7f]);
+        assert_eq!(*ileb128_encode(-128), [0x80|0,    0x7f]);
+        assert_eq!(*ileb128_encode(-129), [0x80|0x7f, 0x7e]);
     }
 }
