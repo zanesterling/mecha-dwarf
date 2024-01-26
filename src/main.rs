@@ -21,7 +21,7 @@ fn main() {
         });
     let macho = macho::File::from(&mmap[..])
         .unwrap_or_else(|e| {
-            println!("{}", e);
+            println!("error parsing macho: {}", e);
             std::process::exit(1);
         });
 
