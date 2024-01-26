@@ -18,6 +18,14 @@ pub fn uleb128_encode(mut n: u64) -> Box<[u8]> {
     out.into_boxed_slice()
 }
 
+pub fn uleb128_decode(bytes: Box<[u8]>) -> u64 {
+    let mut val: u64 = 0;
+    for b in (*bytes).into_iter().rev() {
+        val = (val << 7) | (b & 0x7f) as u64;
+    }
+    return val;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -30,5 +38,15 @@ mod tests {
         assert_eq!(*uleb128_encode(129),   [0x80|1,  1]);
         assert_eq!(*uleb128_encode(130),   [0x80|2,  1]);
         assert_eq!(*uleb128_encode(12857), [0x80|57, 100]);
+    }
+
+    #[test]
+    fn uleb128_decode_works() {
+        assert_eq!(uleb128_decode(Box::new([2])),            2);
+        assert_eq!(uleb128_decode(Box::new([127])),          127);
+        assert_eq!(uleb128_decode(Box::new([0x80|0,  1])),   128);
+        assert_eq!(uleb128_decode(Box::new([0x80|1,  1])),   129);
+        assert_eq!(uleb128_decode(Box::new([0x80|2,  1])),   130);
+        assert_eq!(uleb128_decode(Box::new([0x80|57, 100])), 12857);
     }
 }
