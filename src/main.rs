@@ -2,6 +2,7 @@ use std::fs::File;
 
 use memmap::{ Mmap, MmapOptions };
 
+mod dwarf;
 mod macho;
 
 struct Config {
@@ -28,26 +29,28 @@ fn main() {
     }
 
     // Get the DWARF segment
-    let mut dwarf: Option<macho::Segment64> = None;
+    let mut dwarf_seg: Option<macho::Segment64> = None;
     for cmd in macho.load_commands {
         if let macho::LoadCommandDetails::Segment64(seg) = cmd.details {
             if seg.segname == "__DWARF".to_string() {
-                dwarf = Some(seg);
+                dwarf_seg = Some(seg);
             }
         }
     }
-    if let None = dwarf {
+    if let None = dwarf_seg {
         println!("error: file has no __DWARF segment");
         std::process::exit(1);
     }
-    let dwarf = dwarf.unwrap();
+    let dwarf_seg = dwarf_seg.unwrap();
     if config.verbose {
-        println!("{:#x?}", dwarf);
+        println!("{:#x?}", dwarf_seg);
     }
-
-    for sec in dwarf.sections {
+    for sec in &dwarf_seg.sections {
         println!("{:16} {:#x} {:#x}", sec.sectname, sec.offset, sec.size);
     }
+
+    let dwarf_file = dwarf::File::from(dwarf_seg, &mmap);
+    println!("{:#x?}", dwarf_file);
 }
 
 fn usage(args: Vec<String>) {
