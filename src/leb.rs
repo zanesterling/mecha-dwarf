@@ -58,7 +58,7 @@ pub fn ileb128_encode(mut n: i64) -> Box<[u8]> {
     out.into_boxed_slice()
 }
 
-pub fn ileb128_decode(bytes: Box<[u8]>) -> i64 {
+pub fn ileb128_decode(bytes: &[u8]) -> i64 {
     let mut result = 0;
     let mut shift = 0;
     let mut last_byte = 0;
@@ -118,13 +118,13 @@ mod tests {
 
     #[test]
     fn ileb128_decode_works() {
-        assert_eq!(ileb128_decode(Box::new([2])),                2);
-        assert_eq!(ileb128_decode(Box::new([0x80|127,  0])),     127);
-        assert_eq!(ileb128_decode(Box::new([0x80|0,    1])),     128);
-        assert_eq!(ileb128_decode(Box::new([0x80|1,    1])),     129);
-        assert_eq!(ileb128_decode(Box::new([0x7e        ])),    -2);
-        assert_eq!(ileb128_decode(Box::new([0x80|1,    0x7f])), -127);
-        assert_eq!(ileb128_decode(Box::new([0x80|0,    0x7f])), -128);
-        assert_eq!(ileb128_decode(Box::new([0x80|0x7f, 0x7e])), -129);
+        assert_eq!(ileb128_decode(&[2]),                2);
+        assert_eq!(ileb128_decode(&[0x80|127,  0]),     127);
+        assert_eq!(ileb128_decode(&[0x80|0,    1]),     128);
+        assert_eq!(ileb128_decode(&[0x80|1,    1]),     129);
+        assert_eq!(ileb128_decode(&[0x7e        ]),    -2);
+        assert_eq!(ileb128_decode(&[0x80|1,    0x7f]), -127);
+        assert_eq!(ileb128_decode(&[0x80|0,    0x7f]), -128);
+        assert_eq!(ileb128_decode(&[0x80|0x7f, 0x7e]), -129);
     }
 }
