@@ -53,6 +53,7 @@ fn main() {
             std::process::exit(1);
         });
     for s in &dwarf_file.sections {
+        // TODO: Implement Display for dwarf::Section.
         match s {
             dwarf::Section::Unrecognized { name, contents } =>
                 println!("Unrecognized {:16} {:#x} bytes", name, contents.len()),

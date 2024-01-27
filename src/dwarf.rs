@@ -8,14 +8,42 @@ pub struct File {
 
 impl File {
     pub fn from(segment: macho::Segment64, bytes: &[u8]) -> Result<File, String> {
+        let mut sections: Vec<Section> = segment.sections.iter()
+            .map(|sec| Section::Unrecognized {
+                name: sec.sectname.clone(),
+                contents: vec![],
+            })
+            .collect();
+
+        // Parse the __debug_abbrev section first,
+        // so that it can be used by __debug_info.
+        let (i, debug_abbrev) = segment.sections.iter()
+            .enumerate()
+            .find(|(_, sec)| sec.sectname.as_str() == "__debug_abbrev")
+            .ok_or("missing __debug_abbrev section")?;
+        sections[i] =
+            Self::macho_section_to_dwarf(&debug_abbrev, &bytes, &sections)?;
+
+        for (i, sec) in segment.sections.iter().enumerate() {
+            let start = sec.offset as usize;
+            let end = start + sec.size as usize;
+            let sec = Section::from(
+                sec.sectname.as_str(), &bytes[start .. end], &sections)?;
+            sections[i] = sec;
+        }
         Ok(File {
-            sections: segment.sections.iter().map(|s| {
-                let start = s.offset as usize;
-                let end = start + s.size as usize;
-                Section::from(s.sectname.as_str(), &bytes[start .. end])
-            }).collect::<Result<Vec<Section>, String>>()?,
+            sections,
         })
     }
+
+    fn macho_section_to_dwarf(
+        sec: &macho::Section64, bytes: &[u8], others: &Vec<Section>
+    ) -> Result<Section, String> {
+        let start = sec.offset as usize;
+        let end = start + sec.size as usize;
+        Section::from(sec.sectname.as_str(), &bytes[start .. end], others)
+    }
+
 }
 
 #[derive(Debug)]
@@ -91,7 +119,6 @@ pub enum Section {
         // extensions.
         opcode_base: u8,
 
-        // TODO: Write a LEB128 parsing library.
         // This array specifies the number of LEB128 operands for each of the
         // standard opcodes. The first element of the array corresponds to the
         // opcode whose value is 1, and the last element corresponds to the
@@ -177,12 +204,34 @@ pub enum Section {
 }
 
 impl Section {
-    pub fn from(name: &str, bytes: &[u8]) -> Result<Section, String> {
+    pub fn from(
+        name: &str, bytes: &[u8], others: &Vec<Section>
+    ) -> Result<Section, String> {
         match name {
             "__debug_info" => {
+                let header = CUHeader::from(&bytes[0..11]);
+                let mut offset = 11;
+                let debug_abbrev = {
+                    let mut x = None;
+                    for sect in others {
+                        if let Section::DebugAbbrev { abbrevs } = &sect {
+                            x = Some(abbrevs);
+                            break;
+                        }
+                    }
+                    x
+                }.ok_or("haven't parsed __debug_abbrev yet")?;
+                let mut dies = vec![];
+                loop {
+                    let (leb, _) = uleb128_decode(&bytes[offset..])?;
+                    if leb == 0 { break; }
+                    let (die, size) = DIE::from(&bytes[offset..], debug_abbrev)?;
+                    offset += size;
+                    dies.push(die);
+                }
                 Ok(Section::DebugInfo {
-                    header: CUHeader::from(&bytes[0..11]),
-                    dies: vec![], // TODO: Read dies nuts
+                    header,
+                    dies,
                 })
             },
 
@@ -267,15 +316,25 @@ pub struct DIE {
 }
 
 impl DIE {
-    pub fn from(bytes: &[u8]) -> DIE {
-        // TODO: Read a LEB128 key and search the .debug_abbrev section for it.
-        DIE {
-            tag: DIETag::ArrayType, //TODO
-        }
+    pub fn from(
+        bytes: &[u8], abbrev_decls: &Vec<AbbrevDecl>
+    ) -> Result<(DIE, usize), String> {
+        let (abbr_code, offset) = uleb128_decode(bytes)?;
+        let decl = abbrev_decls.iter().find(|decl| decl.abbrev_code == abbr_code)
+            .ok_or_else(|| format!("found no abbrev matching code: {}", abbr_code))?;
+
+        // TODO: Parse the attributes of this DIE, and then parse its children
+        // if any.
+        Ok((
+            DIE {
+                tag: decl.tag,
+            },
+            offset,
+        ))
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum DIETag {
     ArrayType,
     ClassType,
