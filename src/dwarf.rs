@@ -1,4 +1,4 @@
-use crate::leb;
+use crate::leb::*;
 use crate::macho;
 
 #[derive(Debug)]
@@ -186,10 +186,20 @@ impl Section {
                 })
             },
 
-            "__debug_abbrev" =>
+            "__debug_abbrev" => {
+                let mut abbrevs = vec![];
+                let mut offset = 0;
+                loop {
+                    let (code, _) = uleb128_decode(&bytes[offset..])?;
+                    if code == 0 { break; }
+                    let (abbr, size) = AbbrevDecl::from(&bytes[offset..])?;
+                    offset += size;
+                    abbrevs.push(abbr);
+                }
                 Ok(Section::DebugAbbrev {
-                    abbrevs: vec![AbbrevDecl::from(bytes)?.0],
-                }),
+                    abbrevs,
+                })
+            },
 
             _ => Ok(Section::Unrecognized {
                 name: name.to_string(),
@@ -407,15 +417,16 @@ impl DIETag {
 pub struct AbbrevDecl {
     pub abbrev_code: u64,
     pub tag: DIETag,
+    pub has_children: bool,
     pub attr_specs: Vec<AttrSpec>,
 }
 
 impl AbbrevDecl {
     pub fn from(mut bytes: &[u8]) -> Result<(AbbrevDecl, usize), String> {
         let mut offset = 0;
-        let (abbrev_code, code_size) = leb::uleb128_decode(bytes)?;
+        let (abbrev_code, code_size) = uleb128_decode(bytes)?;
         offset += code_size;
-        let (tag, code_size) = leb::uleb128_decode(&bytes[offset..])?;
+        let (tag, code_size) = uleb128_decode(&bytes[offset..])?;
         offset += code_size;
         let has_children = match bytes[offset] {
             0 => Ok(false),
@@ -425,9 +436,9 @@ impl AbbrevDecl {
         offset += 1;
         let mut attr_specs = vec![];
         loop {
-            let (name, leb_size) = leb::uleb128_decode(&bytes[offset..])?;
+            let (name, leb_size) = uleb128_decode(&bytes[offset..])?;
             offset += leb_size;
-            let (form, leb_size) = leb::uleb128_decode(&bytes[offset..])?;
+            let (form, leb_size) = uleb128_decode(&bytes[offset..])?;
             offset += leb_size;
             if name == 0 && form == 0 { break; }
             attr_specs.push(AttrSpec {
@@ -439,6 +450,7 @@ impl AbbrevDecl {
             AbbrevDecl {
                 abbrev_code,
                 tag: DIETag::from(tag)?,
+                has_children,
                 attr_specs,
             },
             offset,
