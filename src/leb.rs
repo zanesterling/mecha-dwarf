@@ -58,23 +58,27 @@ pub fn ileb128_encode(mut n: i64) -> Box<[u8]> {
     out.into_boxed_slice()
 }
 
-pub fn ileb128_decode(bytes: &[u8]) -> i64 {
+pub fn ileb128_decode(bytes: &[u8]) -> Result<(i64, usize), Error> {
     let mut result = 0;
     let mut shift = 0;
     let mut last_byte = 0;
-    for b in bytes.into_iter() {
-        last_byte = *b;
+    let mut last_i = 0;
+    for (i, b) in bytes.into_iter().enumerate() {
+        (last_i, last_byte) = (i, *b);
         let data = (b & 0x7f) as i64;
         result |= data << shift;
         shift += 7;
         if b & 0x80 == 0 { break; }
+    }
+    if last_byte & 0x80 != 0 {
+        return Err(Error::LastByteHasContinueBit);
     }
     // If last byte's sign bit is set..
     if shift < 64 && 0x40 & last_byte != 0 {
         // ..sign extend the result.
         result |= -(1 << shift);
     }
-    result
+    Ok((result, last_i+1))
 }
 
 #[cfg(test)]
@@ -118,13 +122,13 @@ mod tests {
 
     #[test]
     fn ileb128_decode_works() {
-        assert_eq!(ileb128_decode(&[2]),                2);
-        assert_eq!(ileb128_decode(&[0x80|127,  0]),     127);
-        assert_eq!(ileb128_decode(&[0x80|0,    1]),     128);
-        assert_eq!(ileb128_decode(&[0x80|1,    1]),     129);
-        assert_eq!(ileb128_decode(&[0x7e        ]),    -2);
-        assert_eq!(ileb128_decode(&[0x80|1,    0x7f]), -127);
-        assert_eq!(ileb128_decode(&[0x80|0,    0x7f]), -128);
-        assert_eq!(ileb128_decode(&[0x80|0x7f, 0x7e]), -129);
+        assert_eq!(ileb128_decode(&[2]),               Ok(( 2, 1)));
+        assert_eq!(ileb128_decode(&[0x80|127,  0]),    Ok(( 127, 2)));
+        assert_eq!(ileb128_decode(&[0x80|0,    1]),    Ok(( 128, 2)));
+        assert_eq!(ileb128_decode(&[0x80|1,    1]),    Ok(( 129, 2)));
+        assert_eq!(ileb128_decode(&[0x7e        ]),    Ok((-2, 1)));
+        assert_eq!(ileb128_decode(&[0x80|1,    0x7f]), Ok((-127, 2)));
+        assert_eq!(ileb128_decode(&[0x80|0,    0x7f]), Ok((-128, 2)));
+        assert_eq!(ileb128_decode(&[0x80|0x7f, 0x7e]), Ok((-129, 2)));
     }
 }
