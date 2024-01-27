@@ -9,8 +9,8 @@ pub enum Error {
     LastByteHasContinueBit,
 }
 
-impl std::string::ToString for Error {
-    fn to_string(&self) -> String {
+impl From<Error> for String {
+    fn from(e: Error) -> String {
         "last byte in LEB has continue bit set".to_string()
     }
 }
