@@ -4,13 +4,16 @@
 //   https://en.wikipedia.org/wiki/LEB128
 // You can also find it documented in the DWARF documents at dwarfstd.org.
 
+#![allow(dead_code)]
+
+
 #[derive(PartialEq, Debug)]
 pub enum Error {
     LastByteHasContinueBit,
 }
 
 impl From<Error> for String {
-    fn from(e: Error) -> String {
+    fn from(_: Error) -> String {
         "last byte in LEB has continue bit set".to_string()
     }
 }

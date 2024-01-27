@@ -422,7 +422,7 @@ pub struct AbbrevDecl {
 }
 
 impl AbbrevDecl {
-    pub fn from(mut bytes: &[u8]) -> Result<(AbbrevDecl, usize), String> {
+    pub fn from(bytes: &[u8]) -> Result<(AbbrevDecl, usize), String> {
         let mut offset = 0;
         let (abbrev_code, code_size) = uleb128_decode(bytes)?;
         offset += code_size;
