@@ -1,3 +1,4 @@
+use crate::leb;
 use crate::macho;
 
 #[derive(Debug)]
@@ -165,6 +166,10 @@ pub enum Section {
         dies: Vec<DIE>,
     },
 
+    DebugAbbrev {
+        abbrevs: Vec<AbbrevDecl>,
+    },
+
     Unrecognized {
         name: String,
         contents: Vec<u8>,
@@ -180,6 +185,11 @@ impl Section {
                     dies: vec![], // TODO: Read dies nuts
                 })
             },
+
+            "__debug_abbrev" =>
+                Ok(Section::DebugAbbrev {
+                    abbrevs: vec![AbbrevDecl::from(bytes)?.0],
+                }),
 
             _ => Ok(Section::Unrecognized {
                 name: name.to_string(),
@@ -242,7 +252,7 @@ impl CUHeader {
 // Debugging Information Entry
 #[derive(Debug)]
 pub struct DIE {
-    tag: DIETag,
+    pub tag: DIETag,
     // attrs: Vec<DIEAttribute>,
 }
 
@@ -324,7 +334,7 @@ pub enum DIETag {
 impl DIETag {
     // TODO: this u16 is the output of LEB128 decoding. Arguably should be
     // size-invariant.
-    pub fn from(value: u16) -> Result<DIETag, String> {
+    pub fn from(value: u64) -> Result<DIETag, String> {
         match value {
            0x01   => Ok(DIETag::ArrayType),
            0x02   => Ok(DIETag::ClassType),
@@ -389,6 +399,307 @@ impl DIETag {
            0x4080 => Ok(DIETag::LoUser),
            0xffff => Ok(DIETag::HiUser),
            _ => Err(format!("bad DIE tag {:#x}", value)),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct AbbrevDecl {
+    pub abbrev_code: u64,
+    pub tag: DIETag,
+    pub attr_specs: Vec<AttrSpec>,
+}
+
+impl AbbrevDecl {
+    pub fn from(mut bytes: &[u8]) -> Result<(AbbrevDecl, usize), String> {
+        let mut offset = 0;
+        let (abbrev_code, code_size) = leb::uleb128_decode(bytes)?;
+        offset += code_size;
+        let (tag, code_size) = leb::uleb128_decode(&bytes[offset..])?;
+        offset += code_size;
+        let has_children = match bytes[offset] {
+            0 => Ok(false),
+            1 => Ok(true),
+            x => Err(format!("bad DW_CHILDREN value, {}", x)),
+        }?;
+        offset += 1;
+        let mut attr_specs = vec![];
+        loop {
+            let (name, leb_size) = leb::uleb128_decode(&bytes[offset..])?;
+            offset += leb_size;
+            let (form, leb_size) = leb::uleb128_decode(&bytes[offset..])?;
+            offset += leb_size;
+            if name == 0 && form == 0 { break; }
+            attr_specs.push(AttrSpec {
+                name: AttrName::from(name),
+                form: AttrForm::from(form),
+            });
+        }
+        Ok((
+            AbbrevDecl {
+                abbrev_code,
+                tag: DIETag::from(tag)?,
+                attr_specs,
+            },
+            offset,
+        ))
+    }
+}
+
+#[derive(Debug)]
+pub struct AttrSpec {
+    pub name: AttrName,
+    pub form: AttrForm,
+}
+
+#[derive(Debug)]
+pub enum AttrName {
+    Sibling,
+    Location,
+    Name,
+    Ordering,
+    ByteSize,
+    BitOffset,
+    BitSize,
+    StmtList,
+    LowPc,
+    HighPc,
+    Language,
+    Discr,
+    DiscrValue,
+    Visibility,
+    Import,
+    StringLength,
+    CommonReference,
+    CompDir,
+    ConstValue,
+    ContainingType,
+    DefaultValue,
+    Inline,
+    IsOptional,
+    LowerBound,
+    Producer,
+    Prototyped,
+    ReturnAddr,
+    StartScope,
+    BitStride,
+    UpperBound,
+    AbstractOrigin,
+    Accessibility,
+    AddressClass,
+    Artificial,
+    BaseTypes,
+    CallingConvention,
+    Count,
+    DataMemberLocation,
+    DeclColumn,
+    DeclFile,
+    DeclLine,
+    Declaration,
+    DiscrList,
+    Encoding,
+    External,
+    FrameBase,
+    Friend,
+    IdentifierCase,
+    MacroInfo,
+    NamelistItem,
+    Priority,
+    Segment,
+    Specification,
+    StaticLink,
+    Ttype,
+    UseLocation,
+    VariableParameter,
+    Virtuality,
+    VtableElemLocation,
+    Allocated,
+    Associated,
+    DataLocation,
+    ByteStride,
+    EntryPc,
+    UseUTF8,
+    Extension,
+    Ranges,
+    Trampoline,
+    CallColumn,
+    CallFile,
+    CallLine,
+    Description,
+    BinaryScale,
+    DecimalScale,
+    Small,
+    DecimalSign,
+    DigitCount,
+    PictureString,
+    Mutable,
+    ThreadsScaled,
+    Explicit,
+    ObjectPointer,
+    Endianity,
+    Elemental,
+    Pure,
+    Recursive,
+    Signature,
+    MainSubprogram,
+    DataBitOffset,
+    ConstExpr,
+    EnumClass,
+    LinkageName,
+    LoUser,
+    HiUser,
+    Unrecognized(u64),
+}
+
+impl AttrName {
+    pub fn from(n: u64) -> AttrName {
+        match n {
+            0x01   => AttrName::Sibling,
+            0x02   => AttrName::Location,
+            0x03   => AttrName::Name,
+            0x09   => AttrName::Ordering,
+            0x0b   => AttrName::ByteSize,
+            0x0c   => AttrName::BitOffset,
+            0x0d   => AttrName::BitSize,
+            0x10   => AttrName::StmtList,
+            0x11   => AttrName::LowPc,
+            0x12   => AttrName::HighPc,
+            0x13   => AttrName::Language,
+            0x15   => AttrName::Discr,
+            0x16   => AttrName::DiscrValue,
+            0x17   => AttrName::Visibility,
+            0x18   => AttrName::Import,
+            0x19   => AttrName::StringLength,
+            0x1a   => AttrName::CommonReference,
+            0x1b   => AttrName::CompDir,
+            0x1c   => AttrName::ConstValue,
+            0x1d   => AttrName::ContainingType,
+            0x1e   => AttrName::DefaultValue,
+            0x20   => AttrName::Inline,
+            0x21   => AttrName::IsOptional,
+            0x22   => AttrName::LowerBound,
+            0x25   => AttrName::Producer,
+            0x27   => AttrName::Prototyped,
+            0x2a   => AttrName::ReturnAddr,
+            0x2c   => AttrName::StartScope,
+            0x2e   => AttrName::BitStride,
+            0x2f   => AttrName::UpperBound,
+            0x31   => AttrName::AbstractOrigin,
+            0x32   => AttrName::Accessibility,
+            0x33   => AttrName::AddressClass,
+            0x34   => AttrName::Artificial,
+            0x35   => AttrName::BaseTypes,
+            0x36   => AttrName::CallingConvention,
+            0x37   => AttrName::Count,
+            0x38   => AttrName::DataMemberLocation,
+            0x39   => AttrName::DeclColumn,
+            0x3a   => AttrName::DeclFile,
+            0x3b   => AttrName::DeclLine,
+            0x3c   => AttrName::Declaration,
+            0x3d   => AttrName::DiscrList,
+            0x3e   => AttrName::Encoding,
+            0x3f   => AttrName::External,
+            0x40   => AttrName::FrameBase,
+            0x41   => AttrName::Friend,
+            0x42   => AttrName::IdentifierCase,
+            0x43   => AttrName::MacroInfo,
+            0x44   => AttrName::NamelistItem,
+            0x45   => AttrName::Priority,
+            0x46   => AttrName::Segment,
+            0x47   => AttrName::Specification,
+            0x48   => AttrName::StaticLink,
+            0x49   => AttrName::Ttype,
+            0x4a   => AttrName::UseLocation,
+            0x4b   => AttrName::VariableParameter,
+            0x4c   => AttrName::Virtuality,
+            0x4d   => AttrName::VtableElemLocation,
+            0x4e   => AttrName::Allocated,
+            0x4f   => AttrName::Associated,
+            0x50   => AttrName::DataLocation,
+            0x51   => AttrName::ByteStride,
+            0x52   => AttrName::EntryPc,
+            0x53   => AttrName::UseUTF8,
+            0x54   => AttrName::Extension,
+            0x55   => AttrName::Ranges,
+            0x56   => AttrName::Trampoline,
+            0x57   => AttrName::CallColumn,
+            0x58   => AttrName::CallFile,
+            0x59   => AttrName::CallLine,
+            0x5a   => AttrName::Description,
+            0x5b   => AttrName::BinaryScale,
+            0x5c   => AttrName::DecimalScale,
+            0x5d   => AttrName::Small,
+            0x5e   => AttrName::DecimalSign,
+            0x5f   => AttrName::DigitCount,
+            0x60   => AttrName::PictureString,
+            0x61   => AttrName::Mutable,
+            0x62   => AttrName::ThreadsScaled,
+            0x63   => AttrName::Explicit,
+            0x64   => AttrName::ObjectPointer,
+            0x65   => AttrName::Endianity,
+            0x66   => AttrName::Elemental,
+            0x67   => AttrName::Pure,
+            0x68   => AttrName::Recursive,
+            0x69   => AttrName::Signature,
+            0x6a   => AttrName::MainSubprogram,
+            0x6b   => AttrName::DataBitOffset,
+            0x6c   => AttrName::ConstExpr,
+            0x6d   => AttrName::EnumClass,
+            0x6e   => AttrName::LinkageName,
+            0x2000 => AttrName::LoUser,
+            0x3fff => AttrName::HiUser,
+            n => AttrName::Unrecognized(n),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum AttrForm {
+    Addr,
+    Block2,
+    Block4,
+    Data2,
+    Data4,
+    Data8,
+    Stringg,
+    Block,
+    Block1,
+    Data1,
+    Flag,
+    SData,
+    Strp,
+    Udata,
+    RefAddr,
+    Ref1,
+    Ref2,
+    Ref4,
+    Ref8,
+    Unrecognized(u64),
+}
+
+impl AttrForm {
+    pub fn from(n: u64) -> AttrForm {
+        match n {
+            0x01 => AttrForm::Addr,
+            0x03 => AttrForm::Block2,
+            0x04 => AttrForm::Block4,
+            0x05 => AttrForm::Data2,
+            0x06 => AttrForm::Data4,
+            0x07 => AttrForm::Data8,
+            0x08 => AttrForm::Stringg,
+            0x09 => AttrForm::Block,
+            0x0a => AttrForm::Block1,
+            0x0b => AttrForm::Data1,
+            0x0c => AttrForm::Flag,
+            0x0d => AttrForm::SData,
+            0x0e => AttrForm::Strp,
+            0x0f => AttrForm::Udata,
+            0x10 => AttrForm::RefAddr,
+            0x11 => AttrForm::Ref1,
+            0x12 => AttrForm::Ref2,
+            0x13 => AttrForm::Ref4,
+            0x14 => AttrForm::Ref8,
+            n => AttrForm::Unrecognized(n),
         }
     }
 }
