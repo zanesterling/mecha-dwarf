@@ -59,11 +59,22 @@ pub fn ileb128_encode(mut n: i64) -> Box<[u8]> {
 }
 
 pub fn ileb128_decode(bytes: Box<[u8]>) -> i64 {
-    let mut val: i64 = if bytes[bytes.len()-1] & 0x40 == 0 { 0 } else { -1 };
-    for byte in bytes.into_iter().rev() {
-        val = (val << 7) | (byte & 0x7f) as i64;
+    let mut result = 0;
+    let mut shift = 0;
+    let mut last_byte = 0;
+    for b in bytes.into_iter() {
+        last_byte = *b;
+        let data = (b & 0x7f) as i64;
+        result |= data << shift;
+        shift += 7;
+        if b & 0x80 == 0 { break; }
     }
-    val
+    // If last byte's sign bit is set..
+    if shift < 64 && 0x40 & last_byte != 0 {
+        // ..sign extend the result.
+        result |= -(1 << shift);
+    }
+    result
 }
 
 #[cfg(test)]
