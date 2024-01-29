@@ -745,6 +745,12 @@ pub enum AttrForm {
     Ref2,
     Ref4,
     Ref8,
+    RefUdata,
+    Indirect,
+    SecOffset,
+    ExprLoc,
+    FlagPresent,
+    RefSig8,
     Unrecognized(u64),
 }
 
@@ -770,6 +776,12 @@ impl AttrForm {
             0x12 => AttrForm::Ref2,
             0x13 => AttrForm::Ref4,
             0x14 => AttrForm::Ref8,
+            0x15 => AttrForm::RefUdata,
+            0x16 => AttrForm::Indirect,
+            0x17 => AttrForm::SecOffset,
+            0x18 => AttrForm::ExprLoc,
+            0x19 => AttrForm::FlagPresent,
+            0x20 => AttrForm::RefSig8,
             n => AttrForm::Unrecognized(n),
         }
     }
