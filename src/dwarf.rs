@@ -1,6 +1,8 @@
 use crate::leb::*;
 use crate::macho;
 
+use std::fmt::{Display, Formatter};
+
 #[derive(Debug)]
 pub struct File {
     pub sections: Vec<Section>,
@@ -43,7 +45,15 @@ impl File {
         let end = start + sec.size as usize;
         Section::from(sec.sectname.as_str(), &bytes[start .. end], others)
     }
+}
 
+impl Display for File {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        for sec in self.sections.iter() {
+            write!(f, "{}", sec)?;
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug)]
@@ -255,6 +265,27 @@ impl Section {
                 contents: bytes.to_vec(),
             }),
         }
+    }
+}
+
+impl Display for Section {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        match self {
+            Section::DebugAbbrev { abbrevs } => {
+                write!(f, ".debug_abbrev contents:\n")?;
+                for abbr in abbrevs {
+                    write!(f, "[{}] {:?} DW_CHILDREN={}\n",
+                        abbr.abbrev_code, abbr.tag, abbr.has_children)?;
+                    for spec in abbr.attr_specs.iter() {
+                        write!(f, "\t{:?} {:?}\n", spec.name, spec.form)?;
+                    }
+                    write!(f, "\n")?;
+                }
+            },
+
+            _ => write!(f, "{:#x?}", self)?,
+        }
+        Ok(())
     }
 }
 

@@ -57,7 +57,7 @@ fn main() {
         match s {
             dwarf::Section::Unrecognized { name, contents } =>
                 println!("Unrecognized {:16} {:#x} bytes", name, contents.len()),
-            s => println!("{:#x?}", s),
+            s => println!("{}", s),
         }
     }
 }
