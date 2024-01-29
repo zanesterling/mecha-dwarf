@@ -51,14 +51,7 @@ fn main() {
             println!("error parsing dwarf: {}", e);
             std::process::exit(1);
         });
-    for s in &dwarf_file.sections {
-        // TODO: Implement Display for dwarf::Section.
-        match s {
-            dwarf::Section::Unrecognized { name, contents } =>
-                println!("Unrecognized {:16} {:#x} bytes", name, contents.len()),
-            s => println!("{}", s),
-        }
-    }
+    println!("{}", dwarf_file);
 }
 
 fn usage(args: Vec<String>) {

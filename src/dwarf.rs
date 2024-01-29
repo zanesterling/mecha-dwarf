@@ -279,6 +279,9 @@ impl Display for Section {
                 }
             },
 
+            Section::Unrecognized { name, contents } =>
+                println!("Unrecognized {:16} {:#x} bytes", name, contents.len()),
+
             _ => write!(f, "{:#x?}", self)?,
         }
         Ok(())
