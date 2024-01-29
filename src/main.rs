@@ -29,7 +29,7 @@ fn main() {
         println!("{:#x?}", macho);
     }
 
-    // Get the DWARF segment
+    // Get the DWARF segment.
     let dwarf_seg = macho.load_commands.into_iter()
         .filter_map(|cmd| {
             if let macho::LoadCommandDetails::Segment64(seg) = cmd.details {
@@ -46,6 +46,7 @@ fn main() {
         println!("{:#x?}", dwarf_seg);
     }
 
+    // Parse the DWARF and print.
     let dwarf_file = dwarf::File::from(dwarf_seg, &mmap)
         .unwrap_or_else(|e| {
             println!("error parsing dwarf: {}", e);
