@@ -30,19 +30,18 @@ fn main() {
     }
 
     // Get the DWARF segment
-    let mut dwarf_seg: Option<macho::Segment64> = None;
-    for cmd in macho.load_commands {
-        if let macho::LoadCommandDetails::Segment64(seg) = cmd.details {
-            if seg.segname == "__DWARF".to_string() {
-                dwarf_seg = Some(seg);
+    let dwarf_seg = macho.load_commands.into_iter()
+        .filter_map(|cmd| {
+            if let macho::LoadCommandDetails::Segment64(seg) = cmd.details {
+                if seg.segname.as_str() == "__DWARF" { return Some(seg); }
             }
-        }
-    }
-    if let None = dwarf_seg {
-        println!("error: file has no __DWARF segment");
-        std::process::exit(1);
-    }
-    let dwarf_seg = dwarf_seg.unwrap();
+            None
+        })
+        .next()
+        .unwrap_or_else(|| {
+            println!("error: file has no __DWARF segment");
+            std::process::exit(1);
+        });
     if config.verbose {
         println!("{:#x?}", dwarf_seg);
     }
