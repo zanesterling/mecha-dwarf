@@ -221,16 +221,12 @@ impl Section {
             "__debug_info" => {
                 let header = CUHeader::from(&bytes[0..11]);
                 let mut offset = 11;
-                let debug_abbrev = {
-                    let mut x = None;
-                    for sect in others {
-                        if let Section::DebugAbbrev { abbrevs } = &sect {
-                            x = Some(abbrevs);
-                            break;
-                        }
+                let debug_abbrev = others.iter().filter_map(|sect|
+                    match &sect {
+                        Section::DebugAbbrev { abbrevs } => Some(abbrevs),
+                        _ => None,
                     }
-                    x
-                }.ok_or("haven't parsed __debug_abbrev yet")?;
+                ).next().ok_or("haven't parsed __debug_abbrev yet")?;
                 let mut dies = vec![];
                 loop {
                     let (leb, _) = uleb128_decode(&bytes[offset..])?;
