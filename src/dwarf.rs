@@ -273,7 +273,9 @@ impl Display for Section {
                     write!(f, "[{}] {:?} DW_CHILDREN={}\n",
                         abbr.abbrev_code, abbr.tag, abbr.has_children)?;
                     for spec in abbr.attr_specs.iter() {
-                        write!(f, "\t{:?} {:?}\n", spec.name, spec.form)?;
+                        let name = format!("{:x?}", spec.name);
+                        let form = format!("{:x?}", spec.form);
+                        write!(f, "\t{:<20} {:<20}\n", name, form)?;
                     }
                     write!(f, "\n")?;
                 }
