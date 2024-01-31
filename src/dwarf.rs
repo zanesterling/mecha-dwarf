@@ -2,6 +2,7 @@ use crate::leb::*;
 use crate::macho;
 
 use std::fmt::{Display, Formatter};
+use std::str::{from_utf8, Utf8Error};
 
 #[derive(Debug)]
 pub struct File {
@@ -207,6 +208,8 @@ pub enum Section {
         abbrevs: Vec<AbbrevDecl>,
     },
 
+    DebugStr(DebugStr),
+
     Unrecognized {
         name: String,
         contents: Vec<u8>,
@@ -250,6 +253,9 @@ impl Section {
                 })
             },
 
+            "__debug_str" =>
+                Ok(Section::DebugStr(DebugStr { bytes: bytes.to_vec() })),
+
             _ => Ok(Section::Unrecognized {
                 name: name.to_string(),
                 contents: bytes.to_vec(),
@@ -279,15 +285,47 @@ impl Display for Section {
                 println!("Unrecognized {:16} {:#x} bytes", name, contents.len()),
 
             Section::DebugInfo { header, dies } => {
+                write!(f, ".debug_info contents:\n");
                 write!(f, "{}\n", header)?;
                 for die in dies.iter() {
                     write!(f, "{}\n", die)?;
                 }
             },
 
+            Section::DebugStr(debug_str) => {
+                write!(f, ".debug_str contents:\n");
+                match debug_str.strs() {
+                    Ok(strs) => for (offset, s) in strs {
+                        write!(f, "{:#010x?}: \"{}\"\n", offset, s)?;
+                    },
+                    Err(err) => write!(f, "bad utf-8: \n")?, // FIXME
+                }
+                write!(f, "\n");
+            },
+
             _ => write!(f, "{:#x?}", self)?,
         }
         Ok(())
+    }
+}
+
+#[derive(Debug)]
+pub struct DebugStr {
+    pub bytes: Vec<u8>,
+}
+impl DebugStr {
+    // Returns a list of offset-string pairs.
+    pub fn strs<'a>(&'a self) -> Result<Vec<(usize, &'a str)>, Utf8Error> {
+        let mut strs = vec![];
+        let mut start = 0;
+        for (i, b) in self.bytes.iter().enumerate() {
+            if *b == 0 {
+                let s = from_utf8(&self.bytes[start..i])?;
+                strs.push((start, s));
+                start = i+1;
+            }
+        }
+        return Ok(strs);
     }
 }
 
