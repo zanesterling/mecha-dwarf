@@ -220,24 +220,18 @@ impl Section {
         match name {
             "__debug_info" => {
                 let header = CUHeader::from(&bytes[0..11]);
-                let mut offset = 11;
+                let offset = 11;
                 let debug_abbrev = others.iter().filter_map(|sect|
                     match &sect {
                         Section::DebugAbbrev { abbrevs } => Some(abbrevs),
                         _ => None,
                     }
                 ).next().ok_or("haven't parsed __debug_abbrev yet")?;
-                let mut dies = vec![];
-                loop {
-                    let (leb, _) = uleb128_decode(&bytes[offset..])?;
-                    if leb == 0 { break; }
-                    let (die, size) = DIE::from(&bytes[offset..], debug_abbrev)?;
-                    offset += size;
-                    dies.push(die);
-                }
+                // TODO: How do we know if there are multiple compilation units?
+                let (die, _) = DIE::from(&bytes[offset..], debug_abbrev)?;
                 Ok(Section::DebugInfo {
                     header,
-                    dies,
+                    dies: vec![die],
                 })
             },
 
@@ -283,6 +277,13 @@ impl Display for Section {
 
             Section::Unrecognized { name, contents } =>
                 println!("Unrecognized {:16} {:#x} bytes", name, contents.len()),
+
+            Section::DebugInfo { header, dies } => {
+                write!(f, "{}\n", header)?;
+                for die in dies.iter() {
+                    write!(f, "{}\n", die)?;
+                }
+            },
 
             _ => write!(f, "{:#x?}", self)?,
         }
@@ -340,29 +341,86 @@ impl CUHeader {
     }
 }
 
+impl Display for CUHeader {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        write!(f, "length = {:#010x?}, version = {:#06x?}, abbr_offset = {:#010x?}, address_size = {:#04x?}\n",
+            self.unit_length, self.version, self.debug_abbrev_offset, self.address_size)
+    }
+}
+
 // Debugging Information Entry
 #[derive(Debug)]
 pub struct DIE {
     pub tag: DIETag,
-    // attrs: Vec<DIEAttribute>,
+    pub attrs: Vec<DIEAttribute>,
+    pub children: Vec<DIE>,
 }
 
 impl DIE {
     pub fn from(
         bytes: &[u8], abbrev_decls: &Vec<AbbrevDecl>
     ) -> Result<(DIE, usize), String> {
-        let (abbr_code, offset) = uleb128_decode(bytes)?;
+        let (abbr_code, size) = uleb128_decode(bytes)?;
         let decl = abbrev_decls.iter().find(|decl| decl.abbrev_code == abbr_code)
-            .ok_or_else(|| format!("found no abbrev matching code: {}", abbr_code))?;
+            .ok_or_else(|| format!("found no abbrev matching code: {:#x?}", abbr_code))?;
+        let mut offset = size;
 
-        // TODO: Parse the attributes of this DIE, and then parse its children
-        // if any.
+        // TODO: Parse the attributes of this DIE.
+        let mut attrs: Vec<DIEAttribute> = vec![];
+        for spec in decl.attr_specs.iter() {
+            let (value, size) = AttrValue::from(&bytes[offset..], spec.form.clone())?;
+            offset += size;
+            attrs.push(DIEAttribute {
+                name: spec.name.clone(),
+                value,
+            });
+        }
+
+        let children = if decl.has_children {
+            let (children, size) = Self::nfrom(&bytes[offset..], abbrev_decls)?;
+            offset += size;
+            children
+        } else { vec![] };
         Ok((
             DIE {
                 tag: decl.tag,
+                attrs,
+                children,
             },
             offset,
         ))
+    }
+
+    pub fn nfrom(
+        bytes: &[u8], abbrev_decls: &Vec<AbbrevDecl>
+    ) -> Result<(Vec<DIE>, usize), String> {
+        let mut dies = vec![];
+        let mut offset = 0;
+        loop {
+            let (code, size) = uleb128_decode(&bytes[offset..])?;
+            if code == 0 {
+                offset += size;
+                break;
+            }
+            let (die, size) = Self::from(&bytes[offset..], abbrev_decls)?;
+            dies.push(die);
+            offset += size;
+        }
+        Ok((dies, offset))
+    }
+}
+
+impl Display for DIE {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        write!(f, "DW_TAG_{:?}\n", self.tag)?;
+        for attr in self.attrs.iter() {
+            let name = format!("{:x?}", attr.name);
+            write!(f, "\tDW_AT_{:<20} {:x?}\n", name, attr.value)?;
+        }
+        for child in self.children.iter() {
+            write!(f, "\n{}", child)?;
+        }
+        Ok(())
     }
 }
 
@@ -504,6 +562,79 @@ impl DIETag {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct DIEAttribute {
+    pub name: AttrName,
+    pub value: AttrValue,
+}
+
+impl DIEAttribute {
+}
+
+#[derive(Clone, Debug)]
+pub enum AttrValue {
+    Address(u64),
+    Constant(u64),
+    ExprLoc(Vec<u8>), // Holds an expression or location description.
+    Flag(bool),
+    MacPtr(u64),
+    OffsetReference(u64),
+    StrP(u64),
+    Unimplemented(AttrForm),
+}
+
+impl AttrValue {
+    pub fn from(
+        bytes: &[u8], form: AttrForm
+    ) -> Result<(AttrValue, usize), String> {
+        match form {
+            AttrForm::Addr => {
+                // FIXME: Address size is set in the unit header.
+                let x = u64::from_ne_bytes(bytes[0..8].try_into().unwrap());
+                Ok((AttrValue::Address(x), 8))
+            },
+            AttrForm::Data1 => Ok((AttrValue::Constant(bytes[0] as u64), 1)),
+            AttrForm::Data2 => {
+                let x = u16::from_ne_bytes(bytes[0..2].try_into().unwrap());
+                Ok((AttrValue::Constant(x as u64), 2))
+            },
+            AttrForm::Data4 => {
+                let x = u32::from_ne_bytes(bytes[0..4].try_into().unwrap());
+                Ok((AttrValue::Constant(x as u64), 4))
+            },
+            AttrForm::ExprLoc => {
+                let (len, size) = uleb128_decode(bytes)?;
+                let (len, size) = (len as usize, size as usize);
+                Ok((AttrValue::ExprLoc(bytes[size..size+len].to_vec()), len + size))
+            },
+            AttrForm::Flag => Ok((AttrValue::Flag(bytes[0] != 0), 1)),
+            AttrForm::FlagPresent => Ok((AttrValue::Flag(true), 0)),
+            AttrForm::Ref1 => Ok((AttrValue::OffsetReference(bytes[0] as u64), 1)),
+            AttrForm::Ref2 => {
+                let x = u16::from_ne_bytes(bytes[0..2].try_into().unwrap());
+                Ok((AttrValue::OffsetReference(x as u64), 2))
+            },
+            AttrForm::Ref4 => {
+                let x = u32::from_ne_bytes(bytes[0..4].try_into().unwrap());
+                Ok((AttrValue::OffsetReference(x as u64), 4))
+            },
+            AttrForm::Ref8 => {
+                let x = u32::from_ne_bytes(bytes[0..8].try_into().unwrap());
+                Ok((AttrValue::OffsetReference(x as u64), 8))
+            },
+            AttrForm::SecOffset => {
+                let x = u32::from_ne_bytes(bytes[0..4].try_into().unwrap());
+                Ok((AttrValue::MacPtr(x as u64), 4))
+            },
+            AttrForm::StrP => {
+                let x = u32::from_ne_bytes(bytes[0..4].try_into().unwrap());
+                Ok((AttrValue::StrP(x as u64), 4))
+            },
+            _ => Ok((AttrValue::Unimplemented(form), 0)),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct AbbrevDecl {
     pub abbrev_code: u64,
@@ -555,7 +686,7 @@ pub struct AttrSpec {
     pub form: AttrForm,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum AttrName {
     Sibling,
     Location,
@@ -611,7 +742,7 @@ pub enum AttrName {
     Segment,
     Specification,
     StaticLink,
-    Ttype,
+    Type,
     UseLocation,
     VariableParameter,
     Virtuality,
@@ -711,7 +842,7 @@ impl AttrName {
             0x46   => AttrName::Segment,
             0x47   => AttrName::Specification,
             0x48   => AttrName::StaticLink,
-            0x49   => AttrName::Ttype,
+            0x49   => AttrName::Type,
             0x4a   => AttrName::UseLocation,
             0x4b   => AttrName::VariableParameter,
             0x4c   => AttrName::Virtuality,
@@ -756,7 +887,7 @@ impl AttrName {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum AttrForm {
     Addr,
     Block2,
@@ -770,7 +901,7 @@ pub enum AttrForm {
     Data1,
     Flag,
     SData,
-    Strp,
+    StrP,
     Udata,
     RefAddr,
     Ref1,
@@ -801,7 +932,7 @@ impl AttrForm {
             0x0b => AttrForm::Data1,
             0x0c => AttrForm::Flag,
             0x0d => AttrForm::SData,
-            0x0e => AttrForm::Strp,
+            0x0e => AttrForm::StrP,
             0x0f => AttrForm::Udata,
             0x10 => AttrForm::RefAddr,
             0x11 => AttrForm::Ref1,
