@@ -285,7 +285,7 @@ impl Display for Section {
                 println!("Unrecognized {:16} {:#x} bytes", name, contents.len()),
 
             Section::DebugInfo { header, dies } => {
-                write!(f, ".debug_info contents:\n");
+                write!(f, ".debug_info contents:\n")?;
                 write!(f, "{}\n", header)?;
                 for die in dies.iter() {
                     write!(f, "{}\n", die)?;
@@ -293,14 +293,15 @@ impl Display for Section {
             },
 
             Section::DebugStr(debug_str) => {
-                write!(f, ".debug_str contents:\n");
+                write!(f, ".debug_str contents:\n")?;
                 match debug_str.strs() {
                     Ok(strs) => for (offset, s) in strs {
                         write!(f, "{:#010x?}: \"{}\"\n", offset, s)?;
                     },
-                    Err(err) => write!(f, "bad utf-8: \n")?, // FIXME
+                    // TODO: Rework error checking to only break per-string.
+                    Err(err) => write!(f, "bad utf-8: {}\n", err)?,
                 }
-                write!(f, "\n");
+                write!(f, "\n")?;
             },
 
             _ => write!(f, "{:#x?}", self)?,
