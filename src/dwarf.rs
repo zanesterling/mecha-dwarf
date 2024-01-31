@@ -1,6 +1,7 @@
 use crate::leb::*;
 use crate::macho;
 
+use std::ffi::CStr;
 use std::fmt::{Display, Formatter};
 use std::str::{from_utf8, Utf8Error};
 
@@ -24,6 +25,15 @@ impl File {
             .enumerate()
             .find(|(_, sec)| sec.sectname.as_str() == "__debug_abbrev")
             .ok_or("missing __debug_abbrev section")?;
+        sections[i] =
+            Self::macho_section_to_dwarf(&debug_abbrev, &bytes, &sections)?;
+
+        // Parse the __debug_str section next,
+        // so that it can be used by __debug_info.
+        let (i, debug_abbrev) = segment.sections.iter()
+            .enumerate()
+            .find(|(_, sec)| sec.sectname.as_str() == "__debug_str")
+            .ok_or("missing __debug_str section")?;
         sections[i] =
             Self::macho_section_to_dwarf(&debug_abbrev, &bytes, &sections)?;
 
@@ -230,8 +240,14 @@ impl Section {
                         _ => None,
                     }
                 ).next().ok_or("haven't parsed __debug_abbrev yet")?;
+                let strs = others.iter().filter_map(|sect|
+                    match &sect {
+                        Section::DebugStr(DebugStr{ bytes }) => Some(bytes),
+                        _ => None,
+                    }
+                ).next().ok_or("haven't parsed __debug_str yet")?;
                 // TODO: How do we know if there are multiple compilation units?
-                let (die, _) = DIE::from(&bytes[offset..], debug_abbrev)?;
+                let (die, _) = DIE::from(&bytes[offset..], debug_abbrev, strs)?;
                 Ok(Section::DebugInfo {
                     header,
                     dies: vec![die],
@@ -397,7 +413,9 @@ pub struct DIE {
 
 impl DIE {
     pub fn from(
-        bytes: &[u8], abbrev_decls: &Vec<AbbrevDecl>
+        bytes: &[u8],
+        abbrev_decls: &Vec<AbbrevDecl>,
+        strdata: &[u8],
     ) -> Result<(DIE, usize), String> {
         let (abbr_code, size) = uleb128_decode(bytes)?;
         let decl = abbrev_decls.iter().find(|decl| decl.abbrev_code == abbr_code)
@@ -407,7 +425,7 @@ impl DIE {
         // TODO: Parse the attributes of this DIE.
         let mut attrs: Vec<DIEAttribute> = vec![];
         for spec in decl.attr_specs.iter() {
-            let (value, size) = AttrValue::from(&bytes[offset..], spec.form.clone())?;
+            let (value, size) = AttrValue::from(&bytes[offset..], spec.form.clone(), strdata)?;
             offset += size;
             attrs.push(DIEAttribute {
                 name: spec.name.clone(),
@@ -416,7 +434,7 @@ impl DIE {
         }
 
         let children = if decl.has_children {
-            let (children, size) = Self::nfrom(&bytes[offset..], abbrev_decls)?;
+            let (children, size) = Self::nfrom(&bytes[offset..], abbrev_decls, strdata)?;
             offset += size;
             children
         } else { vec![] };
@@ -431,7 +449,9 @@ impl DIE {
     }
 
     pub fn nfrom(
-        bytes: &[u8], abbrev_decls: &Vec<AbbrevDecl>
+        bytes: &[u8],
+        abbrev_decls: &Vec<AbbrevDecl>,
+        strdata: &[u8],
     ) -> Result<(Vec<DIE>, usize), String> {
         let mut dies = vec![];
         let mut offset = 0;
@@ -441,7 +461,7 @@ impl DIE {
                 offset += size;
                 break;
             }
-            let (die, size) = Self::from(&bytes[offset..], abbrev_decls)?;
+            let (die, size) = Self::from(&bytes[offset..], abbrev_decls, strdata)?;
             dies.push(die);
             offset += size;
         }
@@ -618,13 +638,15 @@ pub enum AttrValue {
     Flag(bool),
     MacPtr(u64),
     OffsetReference(u64),
-    StrP(u64),
+    StrP(String),
     Unimplemented(AttrForm),
 }
 
 impl AttrValue {
     pub fn from(
-        bytes: &[u8], form: AttrForm
+        bytes: &[u8],
+        form: AttrForm,
+        strdata: &[u8],
     ) -> Result<(AttrValue, usize), String> {
         match form {
             AttrForm::Addr => {
@@ -666,8 +688,13 @@ impl AttrValue {
                 Ok((AttrValue::MacPtr(x as u64), 4))
             },
             AttrForm::StrP => {
-                let x = u32::from_ne_bytes(bytes[0..4].try_into().unwrap());
-                Ok((AttrValue::StrP(x as u64), 4))
+                let offset = u32::from_ne_bytes(bytes[0..4].try_into().unwrap());
+                let string = CStr::from_bytes_until_nul(&strdata[offset as usize..])
+                    .map_err(|e| e.to_string())?
+                    .to_str()
+                    .map_err(|e| e.to_string())?
+                    .to_string();
+                Ok((AttrValue::StrP(string), 4))
             },
             _ => Ok((AttrValue::Unimplemented(form), 0)),
         }
