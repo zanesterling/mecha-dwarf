@@ -220,6 +220,12 @@ pub enum Section {
 
     DebugStr(DebugStr),
 
+    DebugAranges {
+        header: CUHeader,
+        segment_size: u8,
+        tuples: Vec<ArangeTuple>,
+    },
+
     Unrecognized {
         name: String,
         contents: Vec<u8>,
@@ -272,6 +278,27 @@ impl Section {
             "__debug_str" =>
                 Ok(Section::DebugStr(DebugStr { bytes: bytes.to_vec() })),
 
+            "__debug_aranges" => {
+                let header = CUHeader::from(&bytes[0..11]);
+                let segment_size = bytes[11];
+                let tuple_size = (segment_size + 2*header.address_size) as usize;
+                // This is 16, not 12, because the header structs must be
+                // aligned to a power of two.
+                let mut offset = 16;
+                let mut tuples = vec![];
+                loop {
+                    let tuple = ArangeTuple::from(
+                        &bytes[offset..offset+tuple_size],
+                        segment_size as u64,
+                        header.address_size as u64);
+                    if tuple.is_zero() { break; }
+                    tuples.push(tuple);
+                    offset += tuple_size;
+                }
+                Ok(Section::DebugAranges { header, segment_size, tuples })
+            }
+
+
             _ => Ok(Section::Unrecognized {
                 name: name.to_string(),
                 contents: bytes.to_vec(),
@@ -302,7 +329,7 @@ impl Display for Section {
 
             Section::DebugInfo { header, dies } => {
                 write!(f, ".debug_info contents:\n")?;
-                write!(f, "{}\n", header)?;
+                write!(f, "{}\n\n", header)?;
                 for die in dies.iter() {
                     write!(f, "{}\n", die)?;
                 }
@@ -316,6 +343,16 @@ impl Display for Section {
                     },
                     // TODO: Rework error checking to only break per-string.
                     Err(err) => write!(f, "bad utf-8: {}\n", err)?,
+                }
+                write!(f, "\n")?;
+            },
+
+            Section::DebugAranges{header, segment_size, tuples} => {
+                write!(f, ".debug_aranges contents:\n")?;
+                write!(f, "Address Range Header: {}, seg_size = {:#04x?}\n",
+                    header, segment_size)?;
+                for tuple in tuples.iter() {
+                    write!(f, "{}\n", tuple)?;
                 }
                 write!(f, "\n")?;
             },
@@ -398,7 +435,7 @@ impl CUHeader {
 
 impl Display for CUHeader {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
-        write!(f, "length = {:#010x?}, version = {:#06x?}, abbr_offset = {:#010x?}, address_size = {:#04x?}\n",
+        write!(f, "length = {:#010x?}, version = {:#06x?}, abbr_offset = {:#010x?}, address_size = {:#04x?}",
             self.unit_length, self.version, self.debug_abbrev_offset, self.address_size)
     }
 }
@@ -1013,5 +1050,51 @@ impl AttrForm {
             0x20 => AttrForm::RefSig8,
             n => AttrForm::Unrecognized(n),
         }
+    }
+}
+
+#[derive(Debug)]
+pub struct ArangeTuple {
+    pub segment: Vec<u8>,
+    pub addr: u64,
+    pub length: u64,
+}
+
+impl ArangeTuple {
+    pub fn from(bytes: &[u8], seg_size: u64, addr_size: u64) -> ArangeTuple {
+        let seg_size = seg_size as usize;
+        let segment = bytes[0..seg_size].to_vec();
+        let mut off = seg_size as usize;
+        let addr = match addr_size {
+            8 => u64::from_ne_bytes(bytes[off..off+8].try_into().unwrap()),
+            4 => u32::from_ne_bytes(bytes[off..off+4].try_into().unwrap()) as u64,
+            2 => u16::from_ne_bytes(bytes[off..off+2].try_into().unwrap()) as u64,
+            1 => bytes[off] as u64,
+            _ => panic!("oh no bad arange addr_size :("),
+        };
+        off += addr_size as usize;
+        let length = match addr_size {
+            8 => u64::from_ne_bytes(bytes[off..off+8].try_into().unwrap()),
+            4 => u32::from_ne_bytes(bytes[off..off+4].try_into().unwrap()) as u64,
+            2 => u16::from_ne_bytes(bytes[off..off+2].try_into().unwrap()) as u64,
+            1 => bytes[off] as u64,
+            _ => panic!("oh no bad arange addr_size :("),
+        };
+        ArangeTuple { segment, addr, length }
+    }
+
+    pub fn is_zero(&self) -> bool {
+        for byte in self.segment.iter() {
+            if *byte != 0 { return false; }
+        }
+        self.addr == 0 && self.length == 0
+    }
+}
+
+impl Display for ArangeTuple {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        let start = format!("{:#018x?}", self.addr);
+        let end = format!("{:#018x?}", self.addr + self.length);
+        write!(f, "[{}, {})", start, end)
     }
 }
